@@ -1,0 +1,34 @@
+{
+  "uid": "exchange-business-kpis",
+  "title": "Exchange Business KPIs",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Orders/sec",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        { "expr": "sum(rate(http_requests_total{job=\"api-gateway\",path=\"/orders\"}[5m]))", "legendFormat": "orders/s" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Fills/sec",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        { "expr": "sum(rate(trades_total[5m]))", "legendFormat": "fills/s" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Slippage (bps)",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+      "targets": [
+        { "expr": "avg(slippage_bps)", "legendFormat": "slippage" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+
+# Jaeger all-in-one >= 2.x exposes a native OTLP receiver on gRPC 4317 / HTTP 4318.
+# The old `jaeger` exporter was removed from otelcol-contrib, so we forward spans
+# with the standard `otlp` exporter instead.
+exporters:
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/jaeger]

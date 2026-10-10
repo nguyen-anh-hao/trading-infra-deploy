@@ -1,0 +1,4 @@
+storage:
+  backend: filesystem
+  filesystem:
+    dir: /var/lib/pyroscope

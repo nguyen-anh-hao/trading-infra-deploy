@@ -1,0 +1,21 @@
+# postgres_exporter custom queries: detect row-lock contention and rollbacks.
+pg_blocked_locks:
+  query: "SELECT count(*) AS blocked_locks FROM pg_locks WHERE granted = false"
+  metrics:
+    - name: blocked_locks
+      usage: GAUGE
+      description: "Number of blocked (ungranted) row locks"
+
+pg_rollbacks:
+  query: "SELECT COALESCE(sum(xact_rollback), 0) AS transaction_rollbacks FROM pg_stat_database"
+  metrics:
+    - name: transaction_rollbacks
+      usage: COUNTER
+      description: "Total transaction rollbacks across databases"
+
+pg_connections:
+  query: "SELECT count(*) AS connections FROM pg_stat_activity"
+  metrics:
+    - name: connections
+      usage: GAUGE
+      description: "Active PostgreSQL connections"

@@ -1,0 +1,19 @@
+{
+  "uid": "node-graph-topology",
+  "title": "Service Map (Node Graph)",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "type": "nodeGraph",
+      "title": "Synchronous call topology",
+      "gridPos": { "h": 20, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "jaeger", "uid": "jaeger" },
+      "targets": [
+        { "refId": "A", "queryType": "dependencyGraph" }
+      ]
+    }
+  ]
+}

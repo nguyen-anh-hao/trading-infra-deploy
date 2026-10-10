@@ -1,0 +1,80 @@
+services:
+  matching-engine:
+    build: ../../services/matching-engine
+    ports:
+      - "9001:9001"
+    networks:
+      - default
+      - trading-net
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9001/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+  risk-engine:
+    build: ../../services/risk-engine
+    ports:
+      - "9002:9002"
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4317
+      OTEL_SERVICE_NAME: risk-engine
+    networks:
+      - default
+      - trading-net
+
+  clearing-settlement:
+    build: ../../services/clearing-settlement
+    ports:
+      - "8083:8083"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/settlement
+      SPRING_DATASOURCE_USERNAME: settlement
+      SPRING_DATASOURCE_PASSWORD: settlement
+      OTLP_TRACING_ENDPOINT: http://otel-collector:4318/v1/traces
+    networks:
+      - default
+      - trading-net
+
+  promotion-service:
+    build: ../../services/promotion-service
+    ports:
+      - "8084:8084"
+    environment:
+      OTEL_SERVICE_NAME: promotion-service
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+    networks:
+      - default
+      - trading-net
+
+  api-gateway:
+    build: ../../services/api-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      MATCHING_ENGINE_ADDR: matching-engine:9001
+      RISK_ENGINE_ADDR: risk-engine:9002
+      SETTLEMENT_ADDR: clearing-settlement:8083
+      PROMOTION_ADDR: promotion-service:8084
+      OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4317
+      RATE_LIMIT_PER_SEC: "10000"
+      OTEL_SERVICE_NAME: api-gateway
+    depends_on:
+      matching-engine:
+        condition: service_healthy
+      risk-engine:
+        condition: service_started
+      clearing-settlement:
+        condition: service_started
+      promotion-service:
+        condition: service_started
+    networks:
+      - default
+      - trading-net
+
+networks:
+  default:
+    driver: bridge
+  trading-net:
+    external: true
