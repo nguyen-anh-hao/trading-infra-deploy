@@ -14,3 +14,4 @@ We adopted **Protocol Buffers v3 (managed via Buf CLI)** as the single source of
 ## Consequences
 - Requires running code generation tooling (`buf generate`) during the build process.
 - Changes to schemas require coordinated versioning across consuming teams.
+

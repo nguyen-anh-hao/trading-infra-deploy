@@ -15,3 +15,4 @@ All money and security movements in `clearing-settlement` adhere strictly to **D
 ## Consequences
 - Requires additional database write throughput for the append-only ledger.
 - Requires batching strategies to handle high-volume trade bursts.
+

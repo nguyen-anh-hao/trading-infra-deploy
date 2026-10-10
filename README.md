@@ -83,3 +83,4 @@ To understand *why* architectural decisions were made, refer to:
 | **v1.1.0** | **GitOps & Ephemeral Environments** | Automate deployment via ArgoCD. Pull Request preview environments deployed dynamically into Kubernetes namespaces for zero-friction end-to-end PR validation. |
 | **v1.2.0** | **High-Availability Message Backbone** | Deploy Redpanda / Apache Kafka cluster on K8s (using Strimzi operator). Implement automated PostgreSQL multi-AZ replication with PgBouncer connection pooling. |
 | **v2.0.0** | **Bare-Metal NUMA Tuning & Chaos Engineering** | Implement Linux CPU-pinning (cgroups/isolcpus) and NUMA node allocation on K8s for Matching Engine pods to eliminate OS context-switch jitter. Chaos Mesh automated fault injection (simulating node crash, packet loss, disk latency spikes). |
+
