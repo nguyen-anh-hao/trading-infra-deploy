@@ -27,7 +27,8 @@ monitor-up: net
 
 # 3b. Chạy toàn bộ stack & reset về trạng thái sạch
 app-up: net
-	docker compose -f deployments/docker/docker-compose.app.yml up -d --build
+	docker compose -f deployments/docker/docker-compose.app.yml pull
+	docker compose -f deployments/docker/docker-compose.app.yml up -d
 
 # Dựng tất cả: infra + app + monitor.
 up: infra-up app-up monitor-up
