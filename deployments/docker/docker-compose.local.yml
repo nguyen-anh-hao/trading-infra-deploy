@@ -6,6 +6,9 @@ services:
     image: matching-engine:local
     ports:
       - "9001:9001"
+    environment:
+      LOG_LEVEL: info
+      APP_ENV: dev
     networks:
       - default
       - trading-net
@@ -26,6 +29,8 @@ services:
     environment:
       OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4317
       OTEL_SERVICE_NAME: risk-engine
+      LOG_LEVEL: debug
+      APP_ENV: dev
     networks:
       - default
       - trading-net
@@ -42,6 +47,9 @@ services:
       SPRING_DATASOURCE_USERNAME: settlement
       SPRING_DATASOURCE_PASSWORD: settlement
       OTLP_TRACING_ENDPOINT: http://otel-collector:4318/v1/traces
+      OTLP_LOGS_ENDPOINT: http://otel-collector:4318/v1/logs
+      LOG_LEVEL: debug
+      APP_ENV: dev
     networks:
       - default
       - trading-net
@@ -56,6 +64,8 @@ services:
     environment:
       OTEL_SERVICE_NAME: promotion-service
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      LOG_LEVEL: debug
+      APP_ENV: dev
     networks:
       - default
       - trading-net
@@ -75,6 +85,8 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4317
       RATE_LIMIT_PER_SEC: "10000"
       OTEL_SERVICE_NAME: api-gateway
+      LOG_LEVEL: debug
+      APP_ENV: dev
     depends_on:
       matching-engine:
         condition: service_healthy
