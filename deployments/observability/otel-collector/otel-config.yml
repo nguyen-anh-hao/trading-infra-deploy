@@ -13,14 +13,22 @@ processors:
 # The old `jaeger` exporter was removed from otelcol-contrib, so we forward spans
 # with the standard `otlp` exporter instead.
 exporters:
-  otlp/jaeger:
+  otlp_grpc/jaeger:
     endpoint: jaeger:4317
     tls:
       insecure: true
-
+  # Loki 3.x natively accepts OTLP over HTTP at /otlp (the dedicated `loki`
+  # exporter was removed from otelcol-contrib), so forward logs with otlp_http.
+  otlp_http/loki:
+    endpoint: http://loki:3100/otlp
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlp/jaeger]
+      exporters: [otlp_grpc/jaeger]
+
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp_http/loki]

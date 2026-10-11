@@ -2,3 +2,7 @@ storage:
   backend: filesystem
   filesystem:
     dir: /var/lib/pyroscope
+
+metastore:
+  raft:
+    dir: /var/lib/pyroscope/metastore/raft

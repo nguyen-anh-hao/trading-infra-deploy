@@ -44,10 +44,15 @@ services:
 
   pyroscope:
     image: grafana/pyroscope:latest
+    # The image runs as a non-root user but needs to write /var/lib/pyroscope.
+    user: root
     ports:
       - "4040:4040"
     volumes:
       - ./pyroscope/pyroscope.yml:/etc/pyroscope/config.yaml:ro
+      - pyroscope-data:/var/lib/pyroscope
+    networks:
+      - default
 
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:latest
@@ -73,8 +78,33 @@ services:
       - default
       - trading-net
 
+  loki:
+    image: grafana/loki:3.7.0
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/loki-config.yml
+    volumes:
+      - ./loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+    networks:
+      - default
+      - trading-net
+
+  alloy:
+    image: grafana/alloy:latest
+    # Alloy 1.x CLI takes the config path as a positional arg to the `run` subcommand.
+    command: run /etc/alloy/alloy-config.alloy
+    volumes:
+      - ./alloy/alloy-config.alloy:/etc/alloy/alloy-config.alloy:ro
+      # Alloy's docker discovery tails logs via the Docker API, so it needs the socket.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - default
+      - trading-net
 networks:
   default:
     driver: bridge
   trading-net:
     external: true
+
+volumes:
+  pyroscope-data:

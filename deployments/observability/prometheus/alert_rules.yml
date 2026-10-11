@@ -16,9 +16,19 @@ groups:
         annotations:
           summary: "Container CPU throttling detected"
       - alert: DBConnectionsExhausted
-        expr: postgres_exporter_connections > 90
+        expr: pg_connections > 90
         for: 2m
         labels:
           severity: critical
         annotations:
           summary: "PostgreSQL connection pool nearly exhausted"
+
+  - name: loki
+    rules:
+      - alert: LokiDown
+        expr: up{job="loki"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Loki instance is down"
