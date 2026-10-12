@@ -70,6 +70,29 @@ services:
       - default
       - trading-net
 
+  market-data-service:
+    build:
+      context: ../../../market-data-service
+      dockerfile: Dockerfile
+    image: market-data-service:local
+    ports:
+      - "8085:8085"
+    environment:
+      NATS_ADDR: nats:4222
+      REDIS_ADDR: redis:6379
+      TIMESCALE_DSN: postgres://market_data:market_data@timescaledb:5432/market_data?sslmode=disable
+      MATCHING_ENGINE_ADDR: matching-engine:9001
+      OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4317
+      OTEL_SERVICE_NAME: market-data-service
+      LOG_LEVEL: debug
+      APP_ENV: dev
+    depends_on:
+      matching-engine:
+        condition: service_started
+    networks:
+      - default
+      - trading-net
+
   api-gateway:
     build:
       context: ../../../api-gateway
@@ -82,6 +105,8 @@ services:
       RISK_ENGINE_ADDR: risk-engine:9002
       SETTLEMENT_ADDR: clearing-settlement:8083
       PROMOTION_ADDR: promotion-service:8084
+      NATS_ADDR: nats:4222
+      MARKET_DATA_ADDR: market-data-service:8085
       OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4317
       RATE_LIMIT_PER_SEC: "10000"
       OTEL_SERVICE_NAME: api-gateway
@@ -95,6 +120,8 @@ services:
       clearing-settlement:
         condition: service_started
       promotion-service:
+        condition: service_started
+      market-data-service:
         condition: service_started
     networks:
       - default
