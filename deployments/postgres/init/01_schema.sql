@@ -46,3 +46,25 @@ CREATE TABLE IF NOT EXISTS ledger_entries (
     timestamp_ns BIGINT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_ledger_account ON ledger_entries(account_id);
+
+-- =============================================================================
+-- Transactional Outbox (Debezium CDC source)
+-- The clearing-settlement service writes one row per accounting event in the
+-- SAME transaction as the ledger/trades/balances writes. Debezium tails this
+-- table and relays events to Kafka. `payload` holds Confluent-framed Avro bytes
+-- (magic byte + schema id + Avro) registered in the Schema Registry.
+--
+-- Column names match the Debezium Outbox Event Router SMT defaults.
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS outbox (
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    aggregatetype VARCHAR(64)  NOT NULL,   -- e.g. trade | ledger | deposit | withdrawal
+    aggregateid   VARCHAR(64)  NOT NULL,   -- e.g. trade_id / entry_id / account_id
+    type          VARCHAR(128) NOT NULL,   -- e.g. TradeSettledEvent
+    payload       BYTEA        NOT NULL,   -- Confluent-framed Avro bytes
+    created_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    published_at  TIMESTAMPTZ,
+    status        VARCHAR(16)  NOT NULL DEFAULT 'PENDING',
+    retry_count   INT          NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_outbox_status ON outbox(status, created_at);

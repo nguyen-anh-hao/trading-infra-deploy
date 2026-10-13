@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: accounting-tax-service
+  namespace: trading-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: accounting-tax-service
+  template:
+    metadata:
+      labels:
+        app: accounting-tax-service
+    spec:
+      containers:
+        - name: accounting-tax-service
+          image: accounting-tax-service:latest
+          ports:
+            - containerPort: 8086
+          envFrom:
+            - configMapRef:
+                name: app-config
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8086
+            failureThreshold: 60
+            periodSeconds: 2
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: accounting-tax-service
+  namespace: trading-system
+spec:
+  selector:
+    app: accounting-tax-service
+  ports:
+    - port: 8086
+      targetPort: 8086

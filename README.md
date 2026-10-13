@@ -22,6 +22,10 @@ graph TD
     Gateway -->|Voucher Discount :8084| Promo[promotion-service]
 
     Settlement --> Postgres[(PostgreSQL :5432)]
+    Settlement -->|Outbox (CDC)| Connect[Debezium Connect]
+    Connect -->|accounting.* Avro| Kafka[(Redpanda / Kafka)]
+    Kafka --> SchemaReg[Schema Registry]
+    Kafka -->|Avro| Acct[accounting-tax-service :8086]
     Risk --> Redis[(Redis :6379)]
 
     Gateway -.-> OTEL[otel-collector :4317]

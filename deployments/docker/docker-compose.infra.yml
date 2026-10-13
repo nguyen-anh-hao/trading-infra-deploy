@@ -1,6 +1,7 @@
 services:
   postgres:
     image: postgres:16
+    command: ["postgres", "-c", "wal_level=logical", "-c", "max_replication_slots=1", "-c", "max_wal_senders=1"]
     environment:
       POSTGRES_DB: settlement
       POSTGRES_USER: settlement
@@ -76,6 +77,97 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  # ---------------------------------------------------------------------------
+  # Kafka event backbone (Redpanda for local dev) + Confluent Schema Registry +
+  # Debezium Kafka Connect (tails the outbox table -> Kafka).
+  # ---------------------------------------------------------------------------
+  redpanda:
+    image: redpandadata/redpanda:v24.2.18
+    command:
+      - redpanda
+      - start
+      - --smp=1
+      - --memory=1G
+      - --overprovisioned
+      - --node-id=0
+      - --kafka-addr=PLAINTEXT://0.0.0.0:29092,OUTSIDE://0.0.0.0:9092
+      - --advertise-kafka-addr=PLAINTEXT://redpanda:29092,OUTSIDE://localhost:9092
+    ports:
+      - "9092:9092"
+      - "9644:9644"
+    networks:
+      - default
+      - trading-net
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster info --brokers localhost:9092 >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.7.1
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://redpanda:29092
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+      SCHEMA_REGISTRY_SCHEMA_COMPATIBILITY_LEVEL: backward
+    ports:
+      - "8081:8081"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    networks:
+      - default
+      - trading-net
+
+  connect:
+    build:
+      context: ./connect
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: redpanda:29092
+      CONNECT_GROUP_ID: "1"
+      CONNECT_CONFIG_STORAGE_TOPIC: connect_configs
+      CONNECT_OFFSET_STORAGE_TOPIC: connect_offsets
+      CONNECT_STATUS_STORAGE_TOPIC: connect_status
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: "1"
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: "1"
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: "1"
+      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.storage.StringConverter
+      CONNECT_VALUE_CONVERTER: io.debezium.converters.BinaryDataConverter
+      CONNECT_VALUE_CONVERTER_DELEGATE_CONVERTER_TYPE: io.confluent.connect.avro.AvroConverter
+      CONNECT_VALUE_CONVERTER_DELEGATE_CONVERTER_TYPE_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      CONNECT_REST_ADVERTISED_HOST_NAME: connect
+      CONNECT_PLUGIN_PATH: /usr/share/java,/usr/share/confluent-hub-components
+    ports:
+      - "8083:8083"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      schema-registry:
+        condition: service_started
+    networks:
+      - default
+      - trading-net
+
+  connect-init:
+    image: curlimages/curl:8.6.0
+    depends_on:
+      connect:
+        condition: service_started
+    volumes:
+      - ./connect/outbox-connector.json:/connector.json:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        until curl -fsS http://connect:8083/connectors >/dev/null 2>&1; do
+          echo "waiting for connect..."; sleep 3;
+        done;
+        curl -s -X POST -H "Content-Type: application/json" --data @/connector.json http://connect:8083/connectors || true;
+        echo "outbox connector registered"
+    networks:
+      - default
+      - trading-net
 
 volumes:
   pgdata:

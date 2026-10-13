@@ -13,3 +13,7 @@ data:
   RISK_ENGINE_ADDR: risk-engine:9002
   SETTLEMENT_ADDR: clearing-settlement:8083
   PROMOTION_ADDR: promotion-service:8084
+  KAFKA_BOOTSTRAP_SERVERS: kafka-bootstrap:9092
+  SCHEMA_REGISTRY_URL: http://schema-registry:8081
+  TAX_RATE: "0.10"
+  ACCOUNTING_OUTBOX_ENABLED: "true"

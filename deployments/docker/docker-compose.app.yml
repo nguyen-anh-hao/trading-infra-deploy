@@ -109,6 +109,20 @@ services:
       - default
       - trading-net
 
+  accounting-tax-service:
+    image: ghcr.io/nguyen-anh-hao/accounting-tax-service:latest
+    ports:
+      - "8086:8086"
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: redpanda:29092
+      SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      TAX_RATE: "0.10"
+      LOG_LEVEL: info
+      APP_ENV: production
+    networks:
+      - default
+      - trading-net
+
 networks:
   default:
     driver: bridge

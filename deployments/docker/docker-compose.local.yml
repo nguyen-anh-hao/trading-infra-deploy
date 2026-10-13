@@ -127,6 +127,23 @@ services:
       - default
       - trading-net
 
+  accounting-tax-service:
+    build:
+      context: ../../../accounting-tax-service
+      dockerfile: Dockerfile
+    image: accounting-tax-service:local
+    ports:
+      - "8086:8086"
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: redpanda:29092
+      SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      TAX_RATE: "0.10"
+      LOG_LEVEL: debug
+      APP_ENV: dev
+    networks:
+      - default
+      - trading-net
+
 networks:
   default:
     driver: bridge
