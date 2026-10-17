@@ -49,7 +49,7 @@ graph TD
 # 1. Create shared network
 make net
 
-# 2. Boot infrastructure (Postgres, Redis, pgAdmin)
+# 2. Boot infrastructure (Postgres, Redis, pgAdmin, Redpanda, Schema Registry, Debezium Connect + accounting topics)
 make infra-up
 
 # 3. Boot telemetry (Prometheus, Grafana, Jaeger, OTel Collector)
@@ -67,6 +67,17 @@ make app-up
 | **Jaeger Traces** | `http://localhost:16686` | None |
 | **Prometheus** | `http://localhost:9090` | None |
 | **pgAdmin** | `http://localhost:5050` | `admin@exchange.internal` / `admin` |
+| **Kafka Connect REST** | `http://localhost:18083` | None (host port `18083` avoids clashing with clearing-settlement on `8083`) |
+| **Kafka UI** | `http://localhost:8090` | None (Redpanda + Schema Registry / Avro) |
+
+> **Kafka / CDC note:** Kafka UI and Schema Registry only show data once an
+> accounting event has actually been produced. The pipeline is
+> `clearing-settlement` → `outbox` table → Debezium Connect → `accounting.*`
+> topics → `accounting-tax-service`. `make infra-up` pre-creates all
+> `accounting.*` (+ `.DLT`) topics and upserts the outbox connector on every
+> boot. `clearing-settlement` must reach Schema Registry via the in-network
+> address `http://schema-registry:8081`; otherwise Avro serialization fails and
+> no outbox rows (and therefore no Kafka messages) are ever written.
 
 ---
 

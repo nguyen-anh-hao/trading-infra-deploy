@@ -138,9 +138,16 @@ services:
       CONNECT_VALUE_CONVERTER_DELEGATE_CONVERTER_TYPE: io.confluent.connect.avro.AvroConverter
       CONNECT_VALUE_CONVERTER_DELEGATE_CONVERTER_TYPE_SCHEMA_REGISTRY_URL: http://schema-registry:8081
       CONNECT_REST_ADVERTISED_HOST_NAME: connect
+      # Required by the image's healthcheck script, which probes
+      # http://$CONNECT_REST_ADVERTISED_HOST_NAME:$CONNECT_REST_PORT/connectors.
+      # Without it the probe hits port 80 and Connect stays "unhealthy".
+      CONNECT_REST_PORT: 8083
       CONNECT_PLUGIN_PATH: /usr/share/java,/usr/share/confluent-hub-components
     ports:
-      - "8083:8083"
+      # Host port 18083 (not 8083) so the Connect REST API does not clash with
+      # clearing-settlement, which owns 8083 on the host. Same convention as
+      # clearing-settlement/deployments/docker/docker-compose.dev.yml.
+      - "18083:8083"
     depends_on:
       redpanda:
         condition: service_healthy
@@ -156,6 +163,9 @@ services:
       connect:
         condition: service_started
     volumes:
+      # Config-only payload (no {"name","config"} wrapper): used with
+      # PUT /connectors/<name>/config, which creates OR updates the connector so
+      # config changes are applied on every boot.
       - ./connect/outbox-connector.json:/connector.json:ro
     entrypoint: ["/bin/sh", "-c"]
     command:
@@ -163,8 +173,36 @@ services:
         until curl -fsS http://connect:8083/connectors >/dev/null 2>&1; do
           echo "waiting for connect..."; sleep 3;
         done;
-        curl -s -X POST -H "Content-Type: application/json" --data @/connector.json http://connect:8083/connectors || true;
-        echo "outbox connector registered"
+        echo -n "outbox connector upsert HTTP ";
+        curl -s -o /dev/null -w "%{http_code}\n" -X PUT
+        -H "Content-Type: application/json"
+        --data @/connector.json
+        http://connect:8083/connectors/settlement-outbox-connector/config;
+        curl -s http://connect:8083/connectors/settlement-outbox-connector/status;
+        echo
+    networks:
+      - default
+      - trading-net
+
+  # One-shot bootstrap: pre-create every topic `accounting-tax-service` consumes
+  # (plus its `.DLT` dead-letter twins). Kafka Streams fails permanently with
+  # INCOMPLETE_SOURCE_TOPIC_METADATA if a source topic is missing at startup, so
+  # the topics must exist before the service boots. Mirrors
+  # accounting-tax-service/deployments/docker/docker-compose.dev.yml.
+  topic-init:
+    image: redpandadata/redpanda:v24.2.18
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - >
+        for t in accounting.trade accounting.ledger accounting.deposit accounting.withdrawal; do
+          rpk topic create "$$t" --brokers redpanda:29092 -p 1 -r 1 || true;
+          rpk topic create "$$t.DLT" --brokers redpanda:29092 -p 1 -r 1 || true;
+        done;
+        echo "accounting topics ready";
+        rpk topic list --brokers redpanda:29092
     networks:
       - default
       - trading-net

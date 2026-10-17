@@ -57,7 +57,7 @@ services:
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:latest
     ports:
-      - "8081:8080"
+      - "8079:8080"
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
@@ -74,6 +74,21 @@ services:
       - ./postgres-exporter/queries.yaml:/etc/postgres_exporter/queries.yaml:ro
     ports:
       - "9187:9187"
+    networks:
+      - default
+      - trading-net
+
+  # Kafka message browser (topics / partitions / messages / consumer groups),
+  # decoding Avro payloads through Schema Registry.
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    environment:
+      DYNAMIC_CONFIG_ENABLED: "true"
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: redpanda:29092
+      KAFKA_CLUSTERS_0_SCHEMAREGISTRY: http://schema-registry:8081
+    ports:
+      - "8090:8080"
     networks:
       - default
       - trading-net

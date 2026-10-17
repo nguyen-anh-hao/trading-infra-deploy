@@ -37,6 +37,10 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/settlement
       SPRING_DATASOURCE_USERNAME: settlement
       SPRING_DATASOURCE_PASSWORD: settlement
+      # Must point at the in-network registry: the app default (localhost:8081)
+      # is unreachable from inside the container, which makes Avro serialization
+      # of outbox events fail and leaves Kafka with zero messages/schemas.
+      SCHEMA_REGISTRY_URL: http://schema-registry:8081
       OTLP_TRACING_ENDPOINT: http://otel-collector:4318/v1/traces
       OTLP_LOGS_ENDPOINT: http://otel-collector:4318/v1/logs
       LOG_LEVEL: info

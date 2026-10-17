@@ -12,8 +12,8 @@ help:
 	@echo "  make down-v         - Stop and wipe all persistent data volumes"
 	@echo "  make reset          - Complete teardown and clean network"
 	@echo ""
-	@echo "  make infra-up       - Boot DB & Cache (PostgreSQL, Redis, pgAdmin)"
-	@echo "  make monitor-up     - Boot Observability (Prometheus, Grafana, Jaeger)"
+	@echo "  make infra-up       - Boot DB, Cache & Event Backbone (PostgreSQL, Redis, Redpanda, Connect)"
+	@echo "  make monitor-up     - Boot Observability (Prometheus, Grafana, Jaeger, Loki, Kafka UI)"
 	@echo "  make app-up         - Pull & run microservices from GHCR"
 	@echo ""
 	@echo "  make logs-app       - Follow logs for microservices (local or prod)"
@@ -51,6 +51,8 @@ up: infra-up monitor-up app-local
 	@echo "  - Grafana:        http://localhost:3000 (admin / admin)"
 	@echo "  - Jaeger UI:      http://localhost:16686"
 	@echo "  - Prometheus:     http://localhost:9090"
+	@echo "  - Kafka UI:       http://localhost:8090"
+	@echo "  - Kafka Connect:  http://localhost:18083"
 	@echo "  - pgAdmin:        http://localhost:5050 (admin@example.com / admin)"
 	@echo ""
 
@@ -61,6 +63,8 @@ up-prod: infra-up monitor-up app-up
 	@echo "  - Grafana:        http://localhost:3000 (admin / admin)"
 	@echo "  - Jaeger UI:      http://localhost:16686"
 	@echo "  - Prometheus:     http://localhost:9090"
+	@echo "  - Kafka UI:       http://localhost:8090"
+	@echo "  - Kafka Connect:  http://localhost:18083"
 	@echo "  - pgAdmin:        http://localhost:5050 (admin@example.com / admin)"
 	@echo ""
 
