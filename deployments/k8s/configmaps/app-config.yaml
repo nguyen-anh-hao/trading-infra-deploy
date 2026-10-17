@@ -16,4 +16,9 @@ data:
   KAFKA_BOOTSTRAP_SERVERS: kafka-bootstrap:9092
   SCHEMA_REGISTRY_URL: http://schema-registry:8081
   TAX_RATE: "0.10"
+  ORDER_SERVICE_ADDR: order-service:8087
+  MARKET_DATA_ADDR: market-data-service:8085
+  NATS_ADDR: nats:4222
+  INTERNAL_API_TOKEN: change-me-in-production
+  WS_TICKER_POLL_MS: "500"
   ACCOUNTING_OUTBOX_ENABLED: "true"

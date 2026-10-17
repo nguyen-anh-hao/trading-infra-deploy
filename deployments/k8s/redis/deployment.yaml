@@ -16,8 +16,12 @@ spec:
       containers:
         - name: redis
           image: redis:7-alpine
+          args: ["--appendonly", "yes"]
           ports:
             - containerPort: 6379
+          volumeMounts:
+            - name: data
+              mountPath: /data
           resources:
             requests:
               cpu: 50m
@@ -25,3 +29,19 @@ spec:
             limits:
               cpu: 500m
               memory: 256Mi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: redis-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-data
+  namespace: trading-system
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi

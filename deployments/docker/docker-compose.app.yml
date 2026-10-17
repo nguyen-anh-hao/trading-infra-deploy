@@ -21,6 +21,7 @@ services:
     ports:
       - "9002:9002"
     environment:
+      REDIS_ADDR: redis:6379
       OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4317
       OTEL_SERVICE_NAME: risk-engine
       LOG_LEVEL: info
@@ -71,6 +72,7 @@ services:
       REDIS_ADDR: redis:6379
       TIMESCALE_DSN: postgres://market_data:market_data@timescaledb:5432/market_data?sslmode=disable
       MATCHING_ENGINE_ADDR: matching-engine:9001
+      WS_TICKER_POLL_MS: "500"
       OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4317
       OTEL_SERVICE_NAME: market-data-service
       LOG_LEVEL: warn
@@ -82,17 +84,47 @@ services:
       - default
       - trading-net
 
-  api-gateway:
-    image: ghcr.io/nguyen-anh-hao/api-gateway:latest
+  order-service:
+    image: ghcr.io/nguyen-anh-hao/order-service:latest
     ports:
-      - "8080:8080"
+      - "8087:8087"
     environment:
       MATCHING_ENGINE_ADDR: matching-engine:9001
       RISK_ENGINE_ADDR: risk-engine:9002
       SETTLEMENT_ADDR: clearing-settlement:8083
       PROMOTION_ADDR: promotion-service:8084
+      REDIS_ADDR: redis:6379
       NATS_ADDR: nats:4222
+      INTERNAL_API_TOKEN: change-me-in-production
+      OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4317
+      OTEL_SERVICE_NAME: order-service
+      LOG_LEVEL: warn
+      APP_ENV: production
+    depends_on:
+      matching-engine:
+        condition: service_healthy
+      risk-engine:
+        condition: service_started
+      clearing-settlement:
+        condition: service_started
+      promotion-service:
+        condition: service_started
+    networks:
+      - default
+      - trading-net
+
+  api-gateway:
+    image: ghcr.io/nguyen-anh-hao/api-gateway:latest
+    ports:
+      - "8080:8080"
+    environment:
+      REDIS_ADDR: redis:6379
+      RISK_ENGINE_ADDR: risk-engine:9002
+      SETTLEMENT_ADDR: clearing-settlement:8083
+      PROMOTION_ADDR: promotion-service:8084
       MARKET_DATA_ADDR: market-data-service:8085
+      ORDER_SERVICE_ADDR: order-service:8087
+      INTERNAL_API_TOKEN: change-me-in-production
       OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4317
       RATE_LIMIT_PER_SEC: "10000"
       OTEL_SERVICE_NAME: api-gateway
@@ -109,6 +141,8 @@ services:
         condition: service_started
       market-data-service:
         condition: service_started
+      order-service:
+        condition: service_started
     networks:
       - default
       - trading-net
@@ -120,6 +154,7 @@ services:
     environment:
       KAFKA_BOOTSTRAP_SERVERS: redpanda:29092
       SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      REDIS_ADDR: redis:6379
       TAX_RATE: "0.10"
       LOG_LEVEL: info
       APP_ENV: production
