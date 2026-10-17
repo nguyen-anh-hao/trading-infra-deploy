@@ -17,8 +17,8 @@ store:
 | Service | Shared state |
 | :--- | :--- |
 | `api-gateway` | Redis: API keys, account-id sequence, rate-limit buckets |
-| `order-service` | Redis: orders, trades, reservations, idempotency keys, fee-rate cache, trade-event spool |
-| `risk-engine` | Redis: balances/reservations, mutated by atomic Lua scripts |
+| `order-service` | PostgreSQL `orders` DB + Redis projection + Avro outbox |
+| `risk-engine` | Redis hot path + `risk:journal` Stream → PostgreSQL `risk` DB + Avro outbox |
 | `market-data-service` | Redis: tape + OHLCV candles; Redis Pub/Sub for WS fan-out; TimescaleDB for raw ticks |
 | `promotion-service` | Redis: vouchers, fee tiers, leaderboard |
 | `accounting-tax-service` | Redis: accounting aggregates (fixed-point integers scaled by 1e8) |

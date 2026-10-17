@@ -9,6 +9,9 @@ data:
   POSTGRES_USER: settlement
   POSTGRES_PASSWORD: settlement
   REDIS_ADDR: redis:6379
+  ORDERS_DB_DSN: postgres://settlement:settlement@postgres:5432/orders?sslmode=disable
+  RISK_DB_DSN: postgres://settlement:settlement@postgres:5432/risk?sslmode=disable
+  SCHEMA_REGISTRY_URL: http://schema-registry:8081
   MATCHING_ENGINE_ADDR: matching-engine:9001
   RISK_ENGINE_ADDR: risk-engine:9002
   SETTLEMENT_ADDR: clearing-settlement:8083

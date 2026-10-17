@@ -170,6 +170,8 @@ services:
       # PUT /connectors/<name>/config, which creates OR updates the connector so
       # config changes are applied on every boot.
       - ./connect/outbox-connector.json:/connector.json:ro
+      - ./connect/orders-outbox-connector.json:/orders-connector.json:ro
+      - ./connect/risk-outbox-connector.json:/risk-connector.json:ro
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >
@@ -182,6 +184,20 @@ services:
         --data @/connector.json
         http://connect:8083/connectors/settlement-outbox-connector/config;
         curl -s http://connect:8083/connectors/settlement-outbox-connector/status;
+        echo;
+        echo -n "orders outbox connector upsert HTTP ";
+        curl -s -o /dev/null -w "%{http_code}\n" -X PUT
+        -H "Content-Type: application/json"
+        --data @/orders-connector.json
+        http://connect:8083/connectors/orders-outbox-connector/config;
+        curl -s http://connect:8083/connectors/orders-outbox-connector/status;
+        echo;
+        echo -n "risk outbox connector upsert HTTP ";
+        curl -s -o /dev/null -w "%{http_code}\n" -X PUT
+        -H "Content-Type: application/json"
+        --data @/risk-connector.json
+        http://connect:8083/connectors/risk-outbox-connector/config;
+        curl -s http://connect:8083/connectors/risk-outbox-connector/status;
         echo
     networks:
       - default
@@ -200,7 +216,7 @@ services:
     entrypoint: ["/bin/bash", "-c"]
     command:
       - >
-        for t in accounting.trade accounting.ledger accounting.deposit accounting.withdrawal; do
+        for t in accounting.trade accounting.ledger accounting.deposit accounting.withdrawal orders.events risk.events; do
           rpk topic create "$$t" --brokers redpanda:29092 -p 1 -r 1 || true;
           rpk topic create "$$t.DLT" --brokers redpanda:29092 -p 1 -r 1 || true;
         done;

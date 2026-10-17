@@ -100,6 +100,7 @@ ps:
 # 7. Kubernetes Cluster Deployment
 k8s-deploy:
 	kubectl apply -f deployments/k8s/namespace.yaml
+	kubectl create configmap postgres-init -n trading-system --from-file=deployments/postgres/init --dry-run=client -o yaml | kubectl apply -f -
 	kubectl apply -f deployments/k8s/configmaps/
 	kubectl apply -f deployments/k8s/postgres/
 	kubectl apply -f deployments/k8s/redis/
@@ -111,5 +112,6 @@ k8s-down:
 	kubectl delete -f deployments/k8s/services/ --ignore-not-found
 	kubectl delete -f deployments/k8s/redis/ --ignore-not-found
 	kubectl delete -f deployments/k8s/postgres/ --ignore-not-found
+	kubectl delete configmap postgres-init -n trading-system --ignore-not-found
 	kubectl delete -f deployments/k8s/configmaps/ --ignore-not-found
 	kubectl delete -f deployments/k8s/namespace.yaml --ignore-not-found

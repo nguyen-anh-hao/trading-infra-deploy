@@ -22,6 +22,8 @@ services:
       - "9002:9002"
     environment:
       REDIS_ADDR: redis:6379
+      RISK_DB_DSN: postgres://settlement:settlement@postgres:5432/risk?sslmode=disable
+      SCHEMA_REGISTRY_URL: http://schema-registry:8081
       OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4317
       OTEL_SERVICE_NAME: risk-engine
       LOG_LEVEL: info
@@ -94,6 +96,8 @@ services:
       SETTLEMENT_ADDR: clearing-settlement:8083
       PROMOTION_ADDR: promotion-service:8084
       REDIS_ADDR: redis:6379
+      ORDERS_DB_DSN: postgres://settlement:settlement@postgres:5432/orders?sslmode=disable
+      SCHEMA_REGISTRY_URL: http://schema-registry:8081
       NATS_ADDR: nats:4222
       INTERNAL_API_TOKEN: change-me-in-production
       OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4317
