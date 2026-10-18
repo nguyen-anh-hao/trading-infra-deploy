@@ -1,5 +1,9 @@
 SHELL := /bin/bash
 
+# WSL often has Docker Engine with the standalone `docker-compose` binary but no
+# `docker compose` CLI plugin. Prefer the plugin, fall back to the standalone.
+COMPOSE ?= $(shell docker compose version >/dev/null 2>&1 && echo "docker compose" || echo "docker-compose")
+
 .PHONY: help net infra-up monitor-up app-pull app-up app-local up up-prod down down-v reset k8s-deploy k8s-down logs-app ps stress-order stress-ws
 
 help:
@@ -28,22 +32,22 @@ net:
 
 # 1. Core Data Infrastructure
 infra-up: net
-	docker compose -f deployments/docker/docker-compose.infra.yml up -d
+	$(COMPOSE) -f deployments/docker/docker-compose.infra.yml up -d
 
 # 2. Observability & Telemetry
 monitor-up: net
-	docker compose -f deployments/observability/docker-compose.monitor.yml up -d
+	$(COMPOSE) -f deployments/observability/docker-compose.monitor.yml up -d
 
 # 3. Microservices Application Stack (GHCR)
 app-pull:
-	docker compose -f deployments/docker/docker-compose.app.yml pull
+	$(COMPOSE) -f deployments/docker/docker-compose.app.yml pull
 
 app-up: net app-pull
-	docker compose -f deployments/docker/docker-compose.app.yml up -d
+	$(COMPOSE) -f deployments/docker/docker-compose.app.yml up -d
 
 # 4. Microservices Application Stack (Local Build)
 app-local: net
-	docker compose -f deployments/docker/docker-compose.local.yml up -d --build
+	$(COMPOSE) -f deployments/docker/docker-compose.local.yml up -d --build
 
 # 5. Master Commands
 up: infra-up monitor-up app-local
@@ -74,32 +78,32 @@ up-prod: infra-up monitor-up app-up
 
 # 6. Teardown & Maintenance
 down:
-	docker compose -f deployments/docker/docker-compose.local.yml down --remove-orphans 2>/dev/null || true
-	docker compose -f deployments/docker/docker-compose.app.yml down --remove-orphans 2>/dev/null || true
-	docker compose -f deployments/observability/docker-compose.monitor.yml down --remove-orphans 2>/dev/null || true
-	docker compose -f deployments/docker/docker-compose.infra.yml down --remove-orphans 2>/dev/null || true
+	$(COMPOSE) -f deployments/docker/docker-compose.local.yml down --remove-orphans 2>/dev/null || true
+	$(COMPOSE) -f deployments/docker/docker-compose.app.yml down --remove-orphans 2>/dev/null || true
+	$(COMPOSE) -f deployments/observability/docker-compose.monitor.yml down --remove-orphans 2>/dev/null || true
+	$(COMPOSE) -f deployments/docker/docker-compose.infra.yml down --remove-orphans 2>/dev/null || true
 
 down-v:
-	docker compose -f deployments/docker/docker-compose.local.yml down -v --remove-orphans 2>/dev/null || true
-	docker compose -f deployments/docker/docker-compose.app.yml down -v --remove-orphans 2>/dev/null || true
-	docker compose -f deployments/observability/docker-compose.monitor.yml down -v --remove-orphans 2>/dev/null || true
-	docker compose -f deployments/docker/docker-compose.infra.yml down -v --remove-orphans 2>/dev/null || true
+	$(COMPOSE) -f deployments/docker/docker-compose.local.yml down -v --remove-orphans 2>/dev/null || true
+	$(COMPOSE) -f deployments/docker/docker-compose.app.yml down -v --remove-orphans 2>/dev/null || true
+	$(COMPOSE) -f deployments/observability/docker-compose.monitor.yml down -v --remove-orphans 2>/dev/null || true
+	$(COMPOSE) -f deployments/docker/docker-compose.infra.yml down -v --remove-orphans 2>/dev/null || true
 
 reset: down-v
 	docker network rm trading-net 2>/dev/null || true
 
 logs-app:
-	@if docker compose -f deployments/docker/docker-compose.local.yml ps --status running | grep -q "Up"; then \
-		docker compose -f deployments/docker/docker-compose.local.yml logs -f; \
+	@if $(COMPOSE) -f deployments/docker/docker-compose.local.yml ps --status running | grep -q "Up"; then \
+		$(COMPOSE) -f deployments/docker/docker-compose.local.yml logs -f; \
 	else \
-		docker compose -f deployments/docker/docker-compose.app.yml logs -f; \
+		$(COMPOSE) -f deployments/docker/docker-compose.app.yml logs -f; \
 	fi
 
 ps:
-	docker compose -f deployments/docker/docker-compose.infra.yml ps
-	docker compose -f deployments/observability/docker-compose.monitor.yml ps
-	docker compose -f deployments/docker/docker-compose.app.yml ps
-	docker compose -f deployments/docker/docker-compose.local.yml ps
+	$(COMPOSE) -f deployments/docker/docker-compose.infra.yml ps
+	$(COMPOSE) -f deployments/observability/docker-compose.monitor.yml ps
+	$(COMPOSE) -f deployments/docker/docker-compose.app.yml ps
+	$(COMPOSE) -f deployments/docker/docker-compose.local.yml ps
 
 stress-order:
 	k6 run -e GATEWAY=http://localhost:8080 -e API_KEY=demo-key stress/k6-order-flow.js
