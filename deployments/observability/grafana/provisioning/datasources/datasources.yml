@@ -2,21 +2,122 @@ apiVersion: 1
 
 datasources:
   - name: Prometheus
+    uid: prometheus
     type: prometheus
     url: http://prometheus:9090
     access: proxy
     isDefault: true
+    jsonData:
+      # Metrics -> traces: spanmetrics/exemplars carry a trace id, jump to Jaeger.
+      exemplarTraceIdDestinations:
+        - name: trace_id
+          datasourceUid: jaeger
+          urlDisplayLabel: 'View trace'
+
   - name: Jaeger
     uid: jaeger
     type: jaeger
     url: http://jaeger:16686
     access: proxy
+    jsonData:
+      # Required by the Jaeger plugin to expose the "Dependency graph" query
+      # type / render the Node Graph panel. Without it the panel query is
+      # rejected even though the datasource itself is healthy.
+      nodeGraph:
+        enabled: true
+      # Makes Grafana widen the dashboard time range to the span's own
+      # timestamp when deep-linking to a trace (fixed-width microsecond spans
+      # are otherwise invisible on 6h dashboards).
+      traceIdTimeParams:
+        enabled: true
+      spanBar:
+        type: 'Duration'
+      # Span -> logs: correlates to the Loki stream produced by Alloy (stdout
+      # JSON) and by the OTLP log exporter.
+      tracesToLogsV2:
+        datasourceUid: loki
+        spanStartTimeShift: '-5m'
+        spanEndTimeShift: '5m'
+        filterByTraceID: true
+        filterBySpanID: false
+        tags:
+          - key: 'service.name'
+            value: 'service_name'
+      # Span -> metrics: RED metrics of the same service.
+      tracesToMetrics:
+        datasourceUid: prometheus
+        spanStartTimeShift: '-2m'
+        spanEndTimeShift: '2m'
+        tags:
+          - key: 'service.name'
+            value: 'service'
+        queries:
+          - name: 'Request rate'
+            query: 'sum by (service) (rate(http_requests_total{$$__tags}[5m]))'
+          - name: 'P95 latency'
+            query: 'histogram_quantile(0.95, sum by (le, service) (rate(http_request_duration_seconds_bucket{$$__tags}[5m])))'
+
+  - name: Tempo
+    uid: tempo
+    type: tempo
+    url: http://tempo:3200
+    access: proxy
+    jsonData:
+      # Node Graph / Service Graph read the traces_service_graph_* series that
+      # Tempo's metrics-generator remote-writes into Prometheus.
+      nodeGraph:
+        enabled: true
+      serviceMap:
+        datasourceUid: prometheus
+      # Stream TraceQL search + metrics responses (Tempo 3 / stream_over_http_enabled).
+      streamingEnabled:
+        search: true
+        metrics: true
+      search:
+        hide: false
+      lokiSearch:
+        datasourceUid: loki
+      tracesToLogsV2:
+        datasourceUid: loki
+        spanStartTimeShift: '-5m'
+        spanEndTimeShift: '5m'
+        filterByTraceID: true
+        filterBySpanID: false
+        tags:
+          - key: 'service.name'
+            value: 'service_name'
+      tracesToMetrics:
+        datasourceUid: prometheus
+        spanStartTimeShift: '-2m'
+        spanEndTimeShift: '2m'
+        tags:
+          - key: 'service.name'
+            value: 'service'
+        queries:
+          - name: 'Request rate'
+            query: 'sum by (service) (rate(http_requests_total{$$__tags}[5m]))'
+          - name: 'P95 latency'
+            query: 'histogram_quantile(0.95, sum by (le, service) (rate(http_request_duration_seconds_bucket{$$__tags}[5m])))'
+
   - name: Pyroscope
+    uid: pyroscope
     type: grafana-pyroscope-datasource
     url: http://pyroscope:4040
     access: proxy
+
   - name: Loki
+    uid: loki
     type: loki
     url: http://loki:3100
     access: proxy
     isDefault: false
+    jsonData:
+      # Logs -> traces: every slog record carries trace_id/span_id when it was
+      # emitted inside a span (see internal/telemetry/logging.go).
+      derivedFields:
+        - name: trace_id
+          matcherRegex: '"trace_id"\s*:\s*"([0-9a-f]{32})"'
+          datasourceUid: jaeger
+          url: '$${__value.raw}'
+          urlDisplayLabel: 'View trace'
+

@@ -1,6 +1,119 @@
 services:
+  node-exporter:
+    image: prom/node-exporter:latest
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/rootfs
+    networks:
+      - default
+      - trading-net
+
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    environment:
+      REDIS_ADDR: redis://redis:6379
+    ports:
+      - "9121:9121"
+    networks:
+      - default
+      - trading-net
+
+  nats-exporter:
+    image: natsio/prometheus-nats-exporter:latest
+    command: ["-varz", "-connz", "-routez", "-subz", "http://nats:8222"]
+    ports:
+      - "7777:7777"
+    networks:
+      - default
+      - trading-net
+
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:latest
+    command: ["--kafka.server=redpanda:29092"]
+    ports:
+      - "9308:9308"
+    networks:
+      - default
+      - trading-net
+
+  blackbox-exporter:
+    image: prom/blackbox-exporter:latest
+    ports:
+      - "9115:9115"
+    volumes:
+      - ./blackbox/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
+    networks:
+      - default
+      - trading-net
+
+  postgres-exporter-orders:
+    image: prometheuscommunity/postgres-exporter:latest
+    environment:
+      DATA_SOURCE_NAME: postgresql://settlement:settlement@postgres:5432/orders?sslmode=disable
+      PG_EXPORTER_EXTEND_QUERY_PATH: /etc/postgres_exporter/queries.yaml
+    volumes:
+      - ./postgres-exporter/queries.yaml:/etc/postgres_exporter/queries.yaml:ro
+    ports:
+      - "9188:9187"
+    networks:
+      - default
+      - trading-net
+
+  postgres-exporter-risk:
+    image: prometheuscommunity/postgres-exporter:latest
+    environment:
+      DATA_SOURCE_NAME: postgresql://settlement:settlement@postgres:5432/risk?sslmode=disable
+      PG_EXPORTER_EXTEND_QUERY_PATH: /etc/postgres_exporter/queries.yaml
+    volumes:
+      - ./postgres-exporter/queries.yaml:/etc/postgres_exporter/queries.yaml:ro
+    ports:
+      - "9189:9187"
+    networks:
+      - default
+      - trading-net
+
+  timescale-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    environment:
+      DATA_SOURCE_NAME: postgresql://market_data:market_data@timescaledb:5432/market_data?sslmode=disable
+    ports:
+      - "9190:9187"
+    networks:
+      - default
+      - trading-net
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    command: ["--config.file=/etc/alertmanager/alertmanager.yml", "--storage.path=/alertmanager"]
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - default
+      - trading-net
+
   prometheus:
     image: prom/prometheus:latest
+    # --web.enable-remote-write-receiver lets Tempo's metrics-generator push the
+    # span-metrics / service-graphs series that Traces Drilldown and the Tempo
+    # Service Graph view read. The rest of the flags mirror the image defaults
+    # (setting `command` replaces CMD entirely).
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-remote-write-receiver
+      - --enable-feature=exemplar-storage
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
@@ -104,6 +217,19 @@ services:
       - default
       - trading-net
 
+  # Tempo backs the Grafana Drilldown -> Traces app and the native trace
+  # search / Service Graph views (Jaeger is not supported by those).
+  tempo:
+    image: grafana/tempo:latest
+    command: ["-target=all", "-config.file=/etc/tempo.yml"]
+    volumes:
+      - ./tempo/tempo.yml:/etc/tempo.yml:ro
+      - tempo-data:/var/tempo
+    ports:
+      - "3200:3200" # query API used by the Grafana Tempo data source
+    networks:
+      - default
+
   alloy:
     image: grafana/alloy:latest
     # Alloy 1.x CLI takes the config path as a positional arg to the `run` subcommand.
@@ -122,4 +248,6 @@ networks:
     external: true
 
 volumes:
+  alertmanager-data:
   pyroscope-data:
+  tempo-data:

@@ -1,19 +1,135 @@
 {
   "uid": "node-graph-topology",
-  "title": "Service Map (Node Graph)",
+  "title": "Tracing (Jaeger)",
+  "description": "Trace exploration backed by the Jaeger datasource. Service dependency graph requires jaeger-spark-dependencies (or a Tempo metrics-generator); see the panel description.",
   "schemaVersion": 39,
-  "version": 1,
-  "refresh": "5s",
-  "time": { "from": "now-6h", "to": "now" },
+  "version": 2,
+  "refresh": "10s",
+  "time": { "from": "now-1h", "to": "now" },
+  "tags": ["tracing", "jaeger"],
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "label": "Service",
+        "type": "custom",
+        "query": "api-gateway,order-service,risk-engine,market-data-service,clearing-settlement,promotion-service",
+        "includeAll": false,
+        "multi": false,
+        "current": { "selected": true, "text": "api-gateway", "value": "api-gateway" },
+        "options": []
+      }
+    ]
+  },
   "panels": [
     {
-      "type": "nodeGraph",
-      "title": "Synchronous call topology",
-      "gridPos": { "h": 20, "w": 24, "x": 0, "y": 0 },
+      "type": "timeseries",
+      "title": "Spans received by otel-collector",
+      "description": "otelcol_receiver_accepted_spans rate scraped from otel-collector:8888. Flat at 0 means no service is exporting spans (check OTEL_EXPORTER_OTLP_ENDPOINT / that the app was rebuilt with tracing).",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "min": 0,
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate({__name__=~\"otelcol_receiver_accepted_spans(_total)?\"}[5m]))",
+          "legendFormat": "spans/s"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Recent traces - $service",
+      "description": "Latest traces recorded by Jaeger for the selected service. Click a trace id to open the full waterfall (Grafana Explore -> Jaeger).",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 6 },
       "datasource": { "type": "jaeger", "uid": "jaeger" },
       "targets": [
-        { "refId": "A", "queryType": "dependencyGraph" }
-      ]
+        {
+          "refId": "A",
+          "queryType": "search",
+          "service": "$service",
+          "operation": "",
+          "tags": "",
+          "minDuration": "",
+          "maxDuration": "",
+          "limit": 50
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": { "show": false, "reducer": ["sum"], "fields": "" }
+      },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto", "filterable": true, "inspect": false } },
+        "overrides": []
+      }
+    },
+    {
+      "type": "table",
+      "title": "Slow traces (> 100ms) - $service",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 16 },
+      "datasource": { "type": "jaeger", "uid": "jaeger" },
+      "targets": [
+        {
+          "refId": "A",
+          "queryType": "search",
+          "service": "$service",
+          "operation": "",
+          "tags": "",
+          "minDuration": "100ms",
+          "maxDuration": "",
+          "limit": 30
+        }
+      ],
+      "options": { "showHeader": true, "cellHeight": "sm" },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto", "filterable": true, "inspect": false } },
+        "overrides": []
+      }
+    },
+    {
+      "type": "table",
+      "title": "Error traces - $service",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 16 },
+      "datasource": { "type": "jaeger", "uid": "jaeger" },
+      "targets": [
+        {
+          "refId": "A",
+          "queryType": "search",
+          "service": "$service",
+          "operation": "",
+          "tags": "error=true",
+          "minDuration": "",
+          "maxDuration": "",
+          "limit": 30
+        }
+      ],
+      "options": { "showHeader": true, "cellHeight": "sm" },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto", "filterable": true, "inspect": false } },
+        "overrides": []
+      }
+    },
+    {
+      "type": "nodeGraph",
+      "title": "Synchronous call topology (service map)",
+      "description": "Queried from Jaeger /api/dependencies, which the all-in-one in-memory store does NOT compute, so this panel stays empty. For a working service map use Explore -> datasource Tempo -> Service Graph tab (built from the traces_service_graph_* metrics Tempo's metrics-generator writes to Prometheus); the same traces are also available via Drilldown -> Traces.",
+      "gridPos": { "h": 16, "w": 24, "x": 0, "y": 25 },
+      "datasource": { "type": "jaeger", "uid": "jaeger" },
+      "targets": [{ "refId": "A", "queryType": "dependencyGraph" }]
     }
   ]
 }
+

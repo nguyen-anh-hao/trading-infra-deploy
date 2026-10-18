@@ -1,23 +1,185 @@
 global:
-  scrape_interval: 5s
-  evaluation_interval: 5s
+  scrape_interval: 10s
+  evaluation_interval: 10s
+  external_labels:
+    environment: local
+    cluster: trading-local
 
 rule_files:
   - /etc/prometheus/alert_rules.yml
 
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
 scrape_configs:
   - job_name: api-gateway
+    scrape_interval: 5s
+    metrics_path: /metrics
     static_configs:
       - targets: ["api-gateway:8080"]
+        labels: {service: api-gateway, tier: edge}
+
+  - job_name: order-service
+    scrape_interval: 5s
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["order-service:8087"]
+        labels: {service: order-service, tier: application}
+
   - job_name: risk-engine
+    scrape_interval: 5s
+    metrics_path: /metrics
     static_configs:
       - targets: ["risk-engine:9002"]
-  - job_name: postgres
+        labels: {service: risk-engine, tier: application}
+
+  - job_name: market-data-service
+    scrape_interval: 5s
+    metrics_path: /metrics
     static_configs:
-      - targets: ["postgres-exporter:9187"]
+      - targets: ["market-data-service:8085"]
+        labels: {service: market-data-service, tier: application}
+
+  - job_name: matching-engine
+    scrape_interval: 5s
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["matching-engine:9001"]
+        labels: {service: matching-engine, tier: core}
+
+  - job_name: clearing-settlement
+    scrape_interval: 5s
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["clearing-settlement:8083"]
+        labels: {service: clearing-settlement, tier: application}
+
+  - job_name: promotion-service
+    scrape_interval: 5s
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["promotion-service:8084"]
+        labels: {service: promotion-service, tier: application}
+
+  - job_name: accounting-tax-service
+    scrape_interval: 5s
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["accounting-tax-service:8086"]
+        labels: {service: accounting-tax-service, tier: analytics}
+
+  - job_name: node-exporter
+    static_configs:
+      - targets: ["node-exporter:9100"]
+        labels: {service: node-exporter, tier: host}
+
   - job_name: cadvisor
     static_configs:
       - targets: ["cadvisor:8080"]
+        labels: {service: cadvisor, tier: containers}
+
+  - job_name: redis
+    static_configs:
+      - targets: ["redis-exporter:9121"]
+        labels: {service: redis, tier: data}
+
+  - job_name: postgres-settlement
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+        labels: {service: postgres-settlement, tier: data}
+
+  - job_name: postgres-orders
+    static_configs:
+      - targets: ["postgres-exporter-orders:9187"]
+        labels: {service: postgres-orders, tier: data}
+
+  - job_name: postgres-risk
+    static_configs:
+      - targets: ["postgres-exporter-risk:9187"]
+        labels: {service: postgres-risk, tier: data}
+
+  - job_name: timescaledb
+    static_configs:
+      - targets: ["timescale-exporter:9187"]
+        labels: {service: timescaledb, tier: data}
+
+  - job_name: nats
+    static_configs:
+      - targets: ["nats-exporter:7777"]
+        labels: {service: nats, tier: messaging}
+
+  - job_name: kafka
+    static_configs:
+      - targets: ["kafka-exporter:9308"]
+        labels: {service: kafka, tier: messaging}
+
+  - job_name: redpanda
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["redpanda:9644"]
+        labels: {service: redpanda, tier: messaging}
+
   - job_name: loki
     static_configs:
       - targets: ["loki:3100"]
+        labels: {service: loki, tier: observability}
+
+  # Collector self-telemetry: otelcol_receiver_accepted_spans / _metric_points /
+  # _log_records show whether anything is actually reaching OTLP :4317/:4318.
+  # `rate(otelcol_receiver_accepted_spans_total[5m]) == 0` is the fastest way to
+  # tell "tracing is broken upstream" from "Grafana cannot query Jaeger".
+  - job_name: otel-collector
+    static_configs:
+      - targets: ["otel-collector:8888"]
+        labels: {service: otel-collector, tier: observability}
+
+  - job_name: blackbox-tcp
+    metrics_path: /probe
+    params:
+      module: [tcp_connect]
+    static_configs:
+      - targets:
+          - redis:6379
+          - nats:4222
+          - redpanda:29092
+          - postgres:5432
+          - timescaledb:5432
+          - matching-engine:9001
+          - schema-registry:8081
+          - connect:8083
+        labels: {service: blackbox-tcp, tier: external}
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+  - job_name: blackbox-http
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          - http://api-gateway:8080/health
+          - http://order-service:8087/health
+          - http://risk-engine:9002/health
+          - http://market-data-service:8085/health
+          - http://matching-engine:9001/health
+          - http://clearing-settlement:8083/actuator/health
+          - http://promotion-service:8084/health
+          - http://accounting-tax-service:8086/actuator/health
+          - http://schema-registry:8081/subjects
+          - http://connect:8083/connectors
+        labels: {service: blackbox-http, tier: external}
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+

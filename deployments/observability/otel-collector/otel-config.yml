@@ -9,12 +9,20 @@ receivers:
 processors:
   batch:
 
-# Jaeger all-in-one >= 2.x exposes a native OTLP receiver on gRPC 4317 / HTTP 4318.
-# The old `jaeger` exporter was removed from otelcol-contrib, so we forward spans
-# with the standard `otlp` exporter instead.
+# `jaegertracing/all-in-one` (1.x) enables the native OTLP receiver by default
+# (gRPC 4317 / HTTP 4318) when COLLECTOR_OTLP_ENABLED=true. The old `jaeger`
+# exporter was removed from otelcol-contrib, so we forward spans with the
+# standard `otlp` exporter instead.
 exporters:
   otlp_grpc/jaeger:
     endpoint: jaeger:4317
+    tls:
+      insecure: true
+  # Tempo feeds Grafana's native traces UI: Drilldown -> Traces, trace search,
+  # and the Service Graph (built from the span-metrics / service-graphs series
+  # its metrics-generator remote-writes to Prometheus).
+  otlp_grpc/tempo:
+    endpoint: tempo:4317
     tls:
       insecure: true
   # Loki 3.x natively accepts OTLP over HTTP at /otlp (the dedicated `loki`
@@ -22,11 +30,25 @@ exporters:
   otlp_http/loki:
     endpoint: http://loki:3100/otlp
 service:
+  # Expose the collector's own Prometheus metrics on all interfaces: the
+  # default pull reader binds to localhost, which would make the
+  # `otel-collector` scrape job in prometheus.yml (target otel-collector:8888)
+  # silently fail. `otelcol_receiver_accepted_spans` is the quickest signal
+  # that spans are actually arriving over OTLP.
+  telemetry:
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
   pipelines:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlp_grpc/jaeger]
+      # Fan out: Jaeger keeps the familiar Jaeger UI, Tempo serves Grafana.
+      exporters: [otlp_grpc/jaeger, otlp_grpc/tempo]
 
     logs:
       receivers: [otlp]

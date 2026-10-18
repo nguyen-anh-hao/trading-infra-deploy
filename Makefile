@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: help net infra-up monitor-up app-pull app-up app-local up up-prod down down-v reset k8s-deploy k8s-down logs-app ps
+.PHONY: help net infra-up monitor-up app-pull app-up app-local up up-prod down down-v reset k8s-deploy k8s-down logs-app ps stress-order stress-ws
 
 help:
 	@echo "======================================================================="
@@ -18,6 +18,8 @@ help:
 	@echo ""
 	@echo "  make logs-app       - Follow logs for microservices (local or prod)"
 	@echo "  make ps             - View status of all active containers"
+	@echo "  make stress-order   - Run k6 order-flow load test"
+	@echo "  make stress-ws      - Run k6 WebSocket fan-out test"
 	@echo "======================================================================="
 
 # Shared docker network for inter-container communication
@@ -51,6 +53,7 @@ up: infra-up monitor-up app-local
 	@echo "  - Grafana:        http://localhost:3000 (admin / admin)"
 	@echo "  - Jaeger UI:      http://localhost:16686"
 	@echo "  - Prometheus:     http://localhost:9090"
+	@echo "  - Alertmanager:   http://localhost:9093"
 	@echo "  - Kafka UI:       http://localhost:8090"
 	@echo "  - Kafka Connect:  http://localhost:18083"
 	@echo "  - pgAdmin:        http://localhost:5050 (admin@example.com / admin)"
@@ -63,6 +66,7 @@ up-prod: infra-up monitor-up app-up
 	@echo "  - Grafana:        http://localhost:3000 (admin / admin)"
 	@echo "  - Jaeger UI:      http://localhost:16686"
 	@echo "  - Prometheus:     http://localhost:9090"
+	@echo "  - Alertmanager:   http://localhost:9093"
 	@echo "  - Kafka UI:       http://localhost:8090"
 	@echo "  - Kafka Connect:  http://localhost:18083"
 	@echo "  - pgAdmin:        http://localhost:5050 (admin@example.com / admin)"
@@ -96,6 +100,12 @@ ps:
 	docker compose -f deployments/observability/docker-compose.monitor.yml ps
 	docker compose -f deployments/docker/docker-compose.app.yml ps
 	docker compose -f deployments/docker/docker-compose.local.yml ps
+
+stress-order:
+	k6 run -e GATEWAY=http://localhost:8080 -e API_KEY=demo-key stress/k6-order-flow.js
+
+stress-ws:
+	k6 run -e GATEWAY=http://localhost:8080 stress/k6-ws-priceboard.js
 
 # 7. Kubernetes Cluster Deployment
 k8s-deploy:

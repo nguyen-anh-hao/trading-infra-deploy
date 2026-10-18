@@ -1,34 +1,289 @@
 groups:
-  - name: trading-system
+  - name: slo-recording
+    rules:
+      - record: job:http_error_ratio5m
+        expr: |
+          sum by (job) (rate(http_requests_total{status=~"5.."}[5m]))
+          /
+          clamp_min(sum by (job) (rate(http_requests_total[5m])), 1)
+      - record: job:http_error_ratio1h
+        expr: |
+          sum by (job) (rate(http_requests_total{status=~"5.."}[1h]))
+          /
+          clamp_min(sum by (job) (rate(http_requests_total[1h])), 1)
+      - record: job:java_http_error_ratio5m
+        expr: |
+          sum by (job) (rate(http_server_requests_seconds_count{status=~"5.."}[5m]))
+          /
+          clamp_min(sum by (job) (rate(http_server_requests_seconds_count[5m])), 1)
+      - record: job:java_http_error_ratio1h
+        expr: |
+          sum by (job) (rate(http_server_requests_seconds_count{status=~"5.."}[1h]))
+          /
+          clamp_min(sum by (job) (rate(http_server_requests_seconds_count[1h])), 1)
+
+  - name: slo-burn-rate
+    rules:
+      # 99.5% availability SLO => 0.5% error budget. A 14.4x burn over 1h
+      # exhausts the 30-day budget in ~2 days; require both windows to agree.
+      - alert: ErrorBudgetBurnFast
+        expr: |
+          job:http_error_ratio5m > 0.072
+          and
+          job:http_error_ratio1h > 0.072
+        for: 2m
+        labels: {severity: critical, slo: "availability-99.5"}
+        annotations:
+          summary: "Fast error-budget burn on {{ $labels.job }}"
+          description: "5m and 1h 5xx ratios both exceed 7.2% (14.4x burn)."
+          runbook_url: "https://github.com/nguyen-anh-hao/trading-infra-deploy#troubleshooting"
+
+      - alert: JavaErrorBudgetBurnFast
+        expr: |
+          job:java_http_error_ratio5m > 0.072
+          and
+          job:java_http_error_ratio1h > 0.072
+        for: 2m
+        labels: {severity: critical, slo: "availability-99.5"}
+        annotations:
+          summary: "Fast error-budget burn on {{ $labels.job }}"
+          description: "5m and 1h 5xx ratios both exceed 7.2% (14.4x burn)."
+
+  - name: availability
+    rules:
+      - alert: ServiceDown
+        expr: up{job=~"api-gateway|order-service|risk-engine|market-data-service|matching-engine|clearing-settlement|promotion-service|accounting-tax-service"} == 0
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.job }} is down"
+          runbook_url: "https://github.com/nguyen-anh-hao/trading-infra-deploy#troubleshooting"
+
+      - alert: ExporterDown
+        expr: up{job=~"redis|nats|kafka|redpanda|postgres-.*|timescaledb|node-exporter|cadvisor"} == 0
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.job }} exporter/metrics endpoint is down"
+
+      - alert: BlackboxProbeFailed
+        expr: probe_success{job=~"blackbox-.*"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "Probe failed: {{ $labels.instance }}"
+
+      - alert: High5xxRate
+        expr: |
+          sum by (job) (rate(http_requests_total{status=~"5.."}[5m]))
+          /
+          clamp_min(sum by (job) (rate(http_requests_total[5m])), 1)
+          > 0.005
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.job }} 5xx rate > 0.5%"
+
+      - alert: High5xxRateJava
+        expr: |
+          sum by (job) (rate(http_server_requests_seconds_count{status=~"5.."}[5m]))
+          /
+          clamp_min(sum by (job) (rate(http_server_requests_seconds_count[5m])), 1)
+          > 0.005
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.job }} Java 5xx rate > 0.5%"
+
+  - name: latency
     rules:
       - alert: HighP99Latency
-        expr: histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m])) > 1
-        for: 2m
-        labels:
-          severity: warning
+        expr: |
+          histogram_quantile(0.99,
+            sum by (job, le) (rate(http_request_duration_seconds_bucket[5m]))
+          ) > 1
+        for: 5m
+        labels: {severity: warning}
         annotations:
-          summary: "P99 latency above 1s"
-      - alert: CFSThrottling
+          summary: "{{ $labels.job }} p99 latency > 1s"
+
+      - alert: HighP99LatencyJava
+        expr: |
+          histogram_quantile(0.99,
+            sum by (job, le) (rate(http_server_requests_seconds_bucket[5m]))
+          ) > 1
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.job }} Java p99 latency > 1s"
+
+      - alert: OrderPathP99High
+        expr: |
+          histogram_quantile(0.99,
+            sum by (job, le) (rate(http_request_duration_seconds_bucket{job=~"api-gateway|order-service"}[5m]))
+          ) > 0.5
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "Order path p99 > 500ms on {{ $labels.job }}"
+
+      - alert: MatchingP99High
+        expr: |
+          histogram_quantile(0.99,
+            sum by (le) (rate(trading_matching_latency_seconds_bucket[5m]))
+          ) > 0.005
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "Matching engine p99 > 5ms"
+
+  - name: dependencies
+    rules:
+      - alert: RedisMemoryHigh
+        expr: |
+          redis_memory_used_bytes / clamp_min(redis_memory_max_bytes, 1) > 0.8
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "Redis memory > 80%"
+
+      - alert: RedisEvictions
+        expr: increase(redis_evicted_keys_total[5m]) > 0
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: "Redis is evicting keys"
+
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: "Redis exporter cannot reach Redis"
+
+      - alert: PostgresConnectionsHigh
+        expr: pg_connections > 80
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "PostgreSQL connections high on {{ $labels.service }}"
+
+      - alert: PostgresBlockedLocks
+        expr: pg_blocked_locks > 5
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "PostgreSQL blocked locks > 5 on {{ $labels.service }}"
+
+      - alert: PostgresRollbacks
+        expr: increase(pg_transaction_rollbacks[5m]) > 10
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "PostgreSQL rollback rate high on {{ $labels.service }}"
+
+      - alert: KafkaConsumerLag
+        expr: max by (consumergroup, topic) (kafka_consumergroup_lag) > 1000
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "Kafka consumer lag > 1000 ({{ $labels.consumergroup }}/{{ $labels.topic }})"
+
+      - alert: NatsPendingMessages
+        expr: max(nats_varz_pending_bytes) > 10485760 or max(nats_varz_slow_consumers) > 0
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "NATS pending bytes/slow consumers high"
+
+      - alert: SchemaRegistryDown
+        expr: probe_success{job="blackbox-http", instance="http://schema-registry:8081/subjects"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "Schema Registry is unreachable"
+
+      - alert: DebeziumConnectDown
+        expr: probe_success{job="blackbox-http", instance="http://connect:8083/connectors"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "Debezium Connect is unreachable"
+
+  - name: data-pipeline
+    rules:
+      - alert: OutboxBacklog
+        expr: max by (service) (trading_outbox_pending) > 100
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "Outbox backlog > 100 on {{ $labels.service }}"
+
+      - alert: OutboxAgeHigh
+        expr: max by (service) (trading_outbox_oldest_age_seconds) > 60
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "Oldest outbox event > 60s on {{ $labels.service }}"
+
+      - alert: RiskJournalLag
+        expr: max(trading_risk_journal_lag_seconds) > 30
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "risk:journal lag > 30s"
+
+      - alert: RiskJournalLength
+        expr: max(trading_risk_journal_length) > 10000
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "risk:journal has > 10000 pending entries"
+
+      - alert: WebSocketBackpressure
+        expr: max(trading_ws_dropped_total) > 0
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "WebSocket dropped frames detected"
+
+      - alert: OrderUnknownState
+        expr: max(trading_orders_current{status="UNKNOWN"}) > 0
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: "Order in UNKNOWN state — operator investigation required"
+
+  - name: capacity
+    rules:
+      - alert: NodeCPUHigh
+        expr: 1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) > 0.8
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Node CPU > 80%"
+
+      - alert: NodeDiskLow
+        expr: |
+          node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"}
+          /
+          node_filesystem_size_bytes{fstype!~"tmpfs|overlay"} < 0.15
+        for: 10m
+        labels: {severity: critical}
+        annotations:
+          summary: "Node disk free < 15% on {{ $labels.mountpoint }}"
+
+      - alert: ContainerCFSThrottling
         expr: rate(container_cpu_cfs_throttled_seconds_total[5m]) > 0.1
         for: 5m
-        labels:
-          severity: critical
+        labels: {severity: critical}
         annotations:
-          summary: "Container CPU throttling detected"
-      - alert: DBConnectionsExhausted
-        expr: pg_connections > 90
-        for: 2m
-        labels:
-          severity: critical
-        annotations:
-          summary: "PostgreSQL connection pool nearly exhausted"
+          summary: "Container CPU throttling detected ({{ $labels.name }})"
 
-  - name: loki
-    rules:
-      - alert: LokiDown
-        expr: up{job="loki"} == 0
-        for: 1m
-        labels:
-          severity: critical
+      - alert: RedisCPUHigh
+        expr: rate(redis_cpu_sys_seconds_total[5m]) + rate(redis_cpu_user_seconds_total[5m]) > 0.8
+        for: 10m
+        labels: {severity: warning}
         annotations:
-          summary: "Loki instance is down"
+          summary: "Redis CPU > 80%"
+
