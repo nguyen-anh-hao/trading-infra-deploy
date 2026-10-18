@@ -32,11 +32,11 @@ groups:
           and
           job:http_error_ratio1h > 0.072
         for: 2m
-        labels: {severity: critical, slo: "availability-99.5"}
+        labels: {severity: critical, slo: "availability-99.5", team: exchange-platform}
         annotations:
           summary: "Fast error-budget burn on {{ $labels.job }}"
+          runbook_url: "https://github.com/nguyen-anh-hao/trading-infra-deploy#operations-and-known-limits"
           description: "5m and 1h 5xx ratios both exceed 7.2% (14.4x burn)."
-          runbook_url: "https://github.com/nguyen-anh-hao/trading-infra-deploy#troubleshooting"
 
       - alert: JavaErrorBudgetBurnFast
         expr: |
@@ -44,9 +44,10 @@ groups:
           and
           job:java_http_error_ratio1h > 0.072
         for: 2m
-        labels: {severity: critical, slo: "availability-99.5"}
+        labels: {severity: critical, slo: "availability-99.5", team: exchange-platform}
         annotations:
           summary: "Fast error-budget burn on {{ $labels.job }}"
+          runbook_url: "https://github.com/nguyen-anh-hao/trading-infra-deploy#operations-and-known-limits"
           description: "5m and 1h 5xx ratios both exceed 7.2% (14.4x burn)."
 
   - name: availability
@@ -54,24 +55,26 @@ groups:
       - alert: ServiceDown
         expr: up{job=~"api-gateway|order-service|risk-engine|market-data-service|matching-engine|clearing-settlement|promotion-service|accounting-tax-service"} == 0
         for: 1m
-        labels: {severity: critical}
+        labels: {severity: critical, team: exchange-platform}
         annotations:
           summary: "{{ $labels.job }} is down"
-          runbook_url: "https://github.com/nguyen-anh-hao/trading-infra-deploy#troubleshooting"
+          runbook_url: "https://github.com/nguyen-anh-hao/trading-infra-deploy#operations-and-known-limits"
 
       - alert: ExporterDown
         expr: up{job=~"redis|nats|kafka|redpanda|postgres-.*|timescaledb|node-exporter|cadvisor"} == 0
         for: 2m
-        labels: {severity: warning}
+        labels: {severity: warning, team: exchange-platform}
         annotations:
           summary: "{{ $labels.job }} exporter/metrics endpoint is down"
+          runbook_url: "https://github.com/nguyen-anh-hao/trading-infra-deploy#operations-and-known-limits"
 
       - alert: BlackboxProbeFailed
         expr: probe_success{job=~"blackbox-.*"} == 0
         for: 2m
-        labels: {severity: critical}
+        labels: {severity: critical, team: exchange-platform}
         annotations:
           summary: "Probe failed: {{ $labels.instance }}"
+          runbook_url: "https://github.com/nguyen-anh-hao/trading-infra-deploy#operations-and-known-limits"
 
       - alert: High5xxRate
         expr: |
@@ -80,9 +83,10 @@ groups:
           clamp_min(sum by (job) (rate(http_requests_total[5m])), 1)
           > 0.005
         for: 5m
-        labels: {severity: warning}
+        labels: {severity: warning, team: exchange-platform}
         annotations:
           summary: "{{ $labels.job }} 5xx rate > 0.5%"
+          runbook_url: "https://github.com/nguyen-anh-hao/trading-infra-deploy#operations-and-known-limits"
 
       - alert: High5xxRateJava
         expr: |
@@ -91,9 +95,10 @@ groups:
           clamp_min(sum by (job) (rate(http_server_requests_seconds_count[5m])), 1)
           > 0.005
         for: 5m
-        labels: {severity: warning}
+        labels: {severity: warning, team: exchange-platform}
         annotations:
           summary: "{{ $labels.job }} Java 5xx rate > 0.5%"
+          runbook_url: "https://github.com/nguyen-anh-hao/trading-infra-deploy#operations-and-known-limits"
 
   - name: latency
     rules:
@@ -103,9 +108,10 @@ groups:
             sum by (job, le) (rate(http_request_duration_seconds_bucket[5m]))
           ) > 1
         for: 5m
-        labels: {severity: warning}
+        labels: {severity: warning, team: exchange-platform}
         annotations:
           summary: "{{ $labels.job }} p99 latency > 1s"
+          runbook_url: "https://github.com/nguyen-anh-hao/trading-infra-deploy#operations-and-known-limits"
 
       - alert: HighP99LatencyJava
         expr: |
@@ -113,9 +119,10 @@ groups:
             sum by (job, le) (rate(http_server_requests_seconds_bucket[5m]))
           ) > 1
         for: 5m
-        labels: {severity: warning}
+        labels: {severity: warning, team: exchange-platform}
         annotations:
           summary: "{{ $labels.job }} Java p99 latency > 1s"
+          runbook_url: "https://github.com/nguyen-anh-hao/trading-infra-deploy#operations-and-known-limits"
 
       - alert: OrderPathP99High
         expr: |
@@ -123,9 +130,10 @@ groups:
             sum by (job, le) (rate(http_request_duration_seconds_bucket{job=~"api-gateway|order-service"}[5m]))
           ) > 0.5
         for: 5m
-        labels: {severity: critical}
+        labels: {severity: critical, team: exchange-platform}
         annotations:
           summary: "Order path p99 > 500ms on {{ $labels.job }}"
+          runbook_url: "https://github.com/nguyen-anh-hao/trading-infra-deploy#operations-and-known-limits"
 
       - alert: MatchingP99High
         expr: |
@@ -133,9 +141,10 @@ groups:
             sum by (le) (rate(trading_matching_latency_seconds_bucket[5m]))
           ) > 0.005
         for: 5m
-        labels: {severity: critical}
+        labels: {severity: critical, team: exchange-platform}
         annotations:
           summary: "Matching engine p99 > 5ms"
+          runbook_url: "https://github.com/nguyen-anh-hao/trading-infra-deploy#operations-and-known-limits"
 
   - name: dependencies
     rules:
@@ -143,125 +152,142 @@ groups:
         expr: |
           redis_memory_used_bytes / clamp_min(redis_memory_max_bytes, 1) > 0.8
         for: 5m
-        labels: {severity: critical}
+        labels: {severity: critical, team: exchange-platform}
         annotations:
           summary: "Redis memory > 80%"
+          runbook_url: "https://github.com/nguyen-anh-hao/trading-infra-deploy#operations-and-known-limits"
 
       - alert: RedisEvictions
         expr: increase(redis_evicted_keys_total[5m]) > 0
         for: 1m
-        labels: {severity: critical}
+        labels: {severity: critical, team: exchange-platform}
         annotations:
           summary: "Redis is evicting keys"
+          runbook_url: "https://github.com/nguyen-anh-hao/trading-infra-deploy#operations-and-known-limits"
 
       - alert: RedisDown
         expr: redis_up == 0
         for: 1m
-        labels: {severity: critical}
+        labels: {severity: critical, team: exchange-platform}
         annotations:
           summary: "Redis exporter cannot reach Redis"
+          runbook_url: "https://github.com/nguyen-anh-hao/trading-infra-deploy#operations-and-known-limits"
 
       - alert: PostgresConnectionsHigh
         expr: pg_connections > 80
         for: 5m
-        labels: {severity: warning}
+        labels: {severity: warning, team: exchange-platform}
         annotations:
           summary: "PostgreSQL connections high on {{ $labels.service }}"
+          runbook_url: "https://github.com/nguyen-anh-hao/trading-infra-deploy#operations-and-known-limits"
 
       - alert: PostgresBlockedLocks
         expr: pg_blocked_locks > 5
         for: 5m
-        labels: {severity: critical}
+        labels: {severity: critical, team: exchange-platform}
         annotations:
           summary: "PostgreSQL blocked locks > 5 on {{ $labels.service }}"
+          runbook_url: "https://github.com/nguyen-anh-hao/trading-infra-deploy#operations-and-known-limits"
 
       - alert: PostgresRollbacks
         expr: increase(pg_transaction_rollbacks[5m]) > 10
         for: 5m
-        labels: {severity: warning}
+        labels: {severity: warning, team: exchange-platform}
         annotations:
           summary: "PostgreSQL rollback rate high on {{ $labels.service }}"
+          runbook_url: "https://github.com/nguyen-anh-hao/trading-infra-deploy#operations-and-known-limits"
 
       - alert: KafkaConsumerLag
         expr: max by (consumergroup, topic) (kafka_consumergroup_lag) > 1000
         for: 5m
-        labels: {severity: warning}
+        labels: {severity: warning, team: exchange-platform}
         annotations:
           summary: "Kafka consumer lag > 1000 ({{ $labels.consumergroup }}/{{ $labels.topic }})"
+          runbook_url: "https://github.com/nguyen-anh-hao/trading-infra-deploy#operations-and-known-limits"
 
       - alert: NatsPendingMessages
         expr: max(nats_varz_pending_bytes) > 10485760 or max(nats_varz_slow_consumers) > 0
         for: 5m
-        labels: {severity: warning}
+        labels: {severity: warning, team: exchange-platform}
         annotations:
           summary: "NATS pending bytes/slow consumers high"
+          runbook_url: "https://github.com/nguyen-anh-hao/trading-infra-deploy#operations-and-known-limits"
 
       - alert: SchemaRegistryDown
         expr: probe_success{job="blackbox-http", instance="http://schema-registry:8081/subjects"} == 0
         for: 2m
-        labels: {severity: critical}
+        labels: {severity: critical, team: exchange-platform}
         annotations:
           summary: "Schema Registry is unreachable"
+          runbook_url: "https://github.com/nguyen-anh-hao/trading-infra-deploy#operations-and-known-limits"
 
       - alert: DebeziumConnectDown
         expr: probe_success{job="blackbox-http", instance="http://connect:8083/connectors"} == 0
         for: 2m
-        labels: {severity: critical}
+        labels: {severity: critical, team: exchange-platform}
         annotations:
           summary: "Debezium Connect is unreachable"
+          runbook_url: "https://github.com/nguyen-anh-hao/trading-infra-deploy#operations-and-known-limits"
 
   - name: data-pipeline
     rules:
       - alert: OutboxBacklog
         expr: max by (service) (trading_outbox_pending) > 100
         for: 5m
-        labels: {severity: warning}
+        labels: {severity: warning, team: exchange-platform}
         annotations:
           summary: "Outbox backlog > 100 on {{ $labels.service }}"
+          runbook_url: "https://github.com/nguyen-anh-hao/trading-infra-deploy#operations-and-known-limits"
 
       - alert: OutboxAgeHigh
         expr: max by (service) (trading_outbox_oldest_age_seconds) > 60
         for: 5m
-        labels: {severity: critical}
+        labels: {severity: critical, team: exchange-platform}
         annotations:
           summary: "Oldest outbox event > 60s on {{ $labels.service }}"
+          runbook_url: "https://github.com/nguyen-anh-hao/trading-infra-deploy#operations-and-known-limits"
 
       - alert: RiskJournalLag
         expr: max(trading_risk_journal_lag_seconds) > 30
         for: 5m
-        labels: {severity: critical}
+        labels: {severity: critical, team: exchange-platform}
         annotations:
           summary: "risk:journal lag > 30s"
+          runbook_url: "https://github.com/nguyen-anh-hao/trading-infra-deploy#operations-and-known-limits"
 
       - alert: RiskJournalLength
         expr: max(trading_risk_journal_length) > 10000
         for: 5m
-        labels: {severity: warning}
+        labels: {severity: warning, team: exchange-platform}
         annotations:
           summary: "risk:journal has > 10000 pending entries"
+          runbook_url: "https://github.com/nguyen-anh-hao/trading-infra-deploy#operations-and-known-limits"
 
       - alert: WebSocketBackpressure
         expr: max(trading_ws_dropped_total) > 0
         for: 5m
-        labels: {severity: warning}
+        labels: {severity: warning, team: exchange-platform}
         annotations:
           summary: "WebSocket dropped frames detected"
+          runbook_url: "https://github.com/nguyen-anh-hao/trading-infra-deploy#operations-and-known-limits"
 
       - alert: OrderUnknownState
         expr: max(trading_orders_current{status="UNKNOWN"}) > 0
         for: 1m
-        labels: {severity: critical}
+        labels: {severity: critical, team: exchange-platform}
         annotations:
           summary: "Order in UNKNOWN state — operator investigation required"
+          runbook_url: "https://github.com/nguyen-anh-hao/trading-infra-deploy#operations-and-known-limits"
 
   - name: capacity
     rules:
       - alert: NodeCPUHigh
         expr: 1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) > 0.8
         for: 10m
-        labels: {severity: warning}
+        labels: {severity: warning, team: exchange-platform}
         annotations:
           summary: "Node CPU > 80%"
+          runbook_url: "https://github.com/nguyen-anh-hao/trading-infra-deploy#operations-and-known-limits"
 
       - alert: NodeDiskLow
         expr: |
@@ -269,21 +295,24 @@ groups:
           /
           node_filesystem_size_bytes{fstype!~"tmpfs|overlay"} < 0.15
         for: 10m
-        labels: {severity: critical}
+        labels: {severity: critical, team: exchange-platform}
         annotations:
           summary: "Node disk free < 15% on {{ $labels.mountpoint }}"
+          runbook_url: "https://github.com/nguyen-anh-hao/trading-infra-deploy#operations-and-known-limits"
 
       - alert: ContainerCFSThrottling
         expr: rate(container_cpu_cfs_throttled_seconds_total[5m]) > 0.1
         for: 5m
-        labels: {severity: critical}
+        labels: {severity: critical, team: exchange-platform}
         annotations:
           summary: "Container CPU throttling detected ({{ $labels.name }})"
+          runbook_url: "https://github.com/nguyen-anh-hao/trading-infra-deploy#operations-and-known-limits"
 
       - alert: RedisCPUHigh
         expr: rate(redis_cpu_sys_seconds_total[5m]) + rate(redis_cpu_user_seconds_total[5m]) > 0.8
         for: 10m
-        labels: {severity: warning}
+        labels: {severity: warning, team: exchange-platform}
         annotations:
           summary: "Redis CPU > 80%"
+          runbook_url: "https://github.com/nguyen-anh-hao/trading-infra-deploy#operations-and-known-limits"
 

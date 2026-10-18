@@ -1,101 +1,58 @@
-# Trading Infrastructure & Deployment (`trading-infra-deploy`)
+# trading-infra-deploy
 
-> **Master Orchestration, GitOps Manifests, Observability Stack & Local Integration Hub** for the Trading System.
+## Purpose
 
----
+Runs the platform: Docker Compose stacks, Kubernetes manifests, observability configuration, load tests and the operational knowledge needed to bring the exchange up and diagnose it. It contains no application code. It is the only repository that is allowed to describe the whole system, because every other repository documents only its own domain.
 
-## 1. Primary Responsibility
-This repository is the central operations hub managed by the **Tech Lead** and **Platform/SRE Engineers**. It defines how the distributed system is provisioned, containerized, monitored, and scaled across local machines, Staging, and Production Kubernetes clusters.
+## Domain knowledge
 
-No application code lives here. Instead, it pulls pre-built container images from GitHub Container Registry (`ghcr.io/nguyen-anh-hao/*`).
+The system is a stateless application tier around a single stateful matching core. Redis is shared state rather than a cache, PostgreSQL holds the settlement, order and risk databases, TimescaleDB stores raw ticks, NATS carries executed trades and Kafka carries outbox events relayed by Debezium. The matching engine is the intentional exception: it is in memory, single-writer and cannot be scaled horizontally without splitting the book.
 
----
+Startup order matters. The network is created first, then the data and messaging backbone, then observability, then the application services. A fresh PostgreSQL volume is required for the initialization SQL to create the order and risk databases and their schemas; reusing an old volume without applying that SQL leaves services unable to start.
 
-## 2. Architecture Topology (System Context)
+Most application services fail fast when a required shared store is unreachable, which is deliberate. Silent fallback to process-local state would split orders, balances or candles across replicas.
 
-```mermaid
-graph TD
-    Client[Web UI / Bots] -->|HTTP / WS :8080| Gateway[api-gateway]
-    Gateway -->|HTTP/gRPC :9002| Risk[risk-engine]
-    Risk -->|Check OK :9001| Engine[matching-engine]
-    Engine -->|Execution Event :8083| Settlement[clearing-settlement]
-    Gateway -->|Voucher Discount :8084| Promo[promotion-service]
+Settlement is the exception: it can boot without its database but cannot book anything until the database returns. Redis runs with append-only persistence, and the Kubernetes manifests give it a persistent volume for the same reason.
 
-    Settlement --> Postgres[(PostgreSQL :5432)]
-    Settlement -->|Outbox (CDC)| Connect[Debezium Connect]
-    Connect -->|accounting.* Avro| Kafka[(Redpanda / Kafka)]
-    Kafka --> SchemaReg[Schema Registry]
-    Kafka -->|Avro| Acct[accounting-tax-service :8086]
-    Risk --> Redis[(Redis :6379)]
+The outbox pattern is the backbone of asynchronous consistency. Settlement, order and risk each write an outbox row in the same database transaction as their state change, and Debezium publishes the Avro payload to Kafka under the record's fully qualified name. The accounting service consumes those topics, while market data consumes trade events directly from NATS through a durable consumer.
 
-    Gateway -.-> OTEL[otel-collector :4317]
-    Risk -.-> OTEL
-    Settlement -.-> OTEL
-    OTEL --> Prometheus[Prometheus :9090]
-    OTEL --> Jaeger[Jaeger UI :16686]
-    Prometheus --> Grafana[Grafana :3000]
-```
+Observability is part of the definition of done. Metrics flow to Prometheus, traces to Jaeger and Tempo, logs to Loki through the collector, and profiles to Pyroscope. Grafana Drilldown works only with Tempo, and service graphs are produced by Tempo rather than by the in-memory Jaeger instance, which is why both trace stores exist.
 
----
+## Decisions and consequences
 
-## 3. Quick Start (Run Full Ecosystem in 1 Command)
+**Stateless application tier with shared Redis.** Any replica can serve any request and rolling restarts are safe. The cost is that Redis becomes a critical dependency that must be durable, monitored and backed up.
 
-### Prerequisites
-- Docker & Docker Compose v2+
-- Make (optional, but recommended)
+**Single-writer matching engine.** Determinism and latency win over horizontal scale, so the engine runs with one replica. High availability must come from snapshot and replay, not from replica count.
 
-### 1-Click Launch
-```bash
-# 1. Create shared network
-make net
+**Transactional outbox with CDC.** Database state and events commit together, removing dual-write failures. The cost is an outbox table per producer, three Debezium connectors and a schema registry on the critical path.
 
-# 2. Boot infrastructure (Postgres, Redis, pgAdmin, Redpanda, Schema Registry, Debezium Connect + accounting topics)
-make infra-up
+**Materialized read models.** Order, risk, market-data and accounting views are built for reads rather than recomputed per request. This gives predictable latency at the price of reconciliation logic and bounded staleness.
 
-# 3. Boot telemetry (Prometheus, Grafana, Jaeger, OTel Collector)
-make monitor-up
+**Compose baseline with Kubernetes manifests.** Compose is the fast local path, while Kubernetes covers namespace, config, Postgres, Redis, services and autoscaling. The cost is two deployment descriptions that can drift.
 
-# 4. Pull and run all microservices from GHCR
-make app-up
-```
+**Docker-first observability bundle.** Prometheus, Grafana, Jaeger, Tempo, Loki, Alloy and Pyroscope ship together so every service is observable by default. The cost is a heavy local footprint and more moving parts to keep healthy.
 
-### Access Dashboards
-| Service | URL | Default Credentials |
-| :--- | :--- | :--- |
-| **API Gateway** | `http://localhost:8080` | None |
-| **Grafana Metrics** | `http://localhost:3000` | `admin` / `admin` |
-| **Jaeger Traces** | `http://localhost:16686` | None |
-| **Prometheus** | `http://localhost:9090` | None |
-| **pgAdmin** | `http://localhost:5050` | `admin@exchange.internal` / `admin` |
-| **Kafka Connect REST** | `http://localhost:18083` | None (host port `18083` avoids clashing with clearing-settlement on `8083`) |
-| **Kafka UI** | `http://localhost:8090` | None (Redpanda + Schema Registry / Avro) |
+## Operations and known limits
 
-> **Kafka / CDC note:** Kafka UI and Schema Registry only show data once an
-> accounting event has actually been produced. The pipeline is
-> `clearing-settlement` → `outbox` table → Debezium Connect → `accounting.*`
-> topics → `accounting-tax-service`. `make infra-up` pre-creates all
-> `accounting.*` (+ `.DLT`) topics and upserts the outbox connector on every
-> boot. `clearing-settlement` must reach Schema Registry via the in-network
-> address `http://schema-registry:8081`; otherwise Avro serialization fails and
-> no outbox rows (and therefore no Kafka messages) are ever written.
+`make up` starts everything from local sources, while `make up-prod` pulls published images; `make infra-up`, `make monitor-up` and `make app-local` allow staged startup. `make down` preserves volumes, `make down-v` wipes them, and `make reset` also removes the shared network. After a reset, a fresh start is required before any service can be trusted.
 
----
+The usual failure signatures are worth knowing. A gateway request returning 502 usually means the order path cannot reach risk, matching or settlement. A silent WebSocket means the trade spool, NATS consumer or Redis Pub/Sub path is broken.
 
-## 4. Architecture Decision Records (ADRs)
+Empty accounting means the settlement outbox, the Debezium connector or the consumer is stuck. Authentication failures are 401 for an unknown key and 403 for a missing permission, and an internal 401 means the internal token does not match.
 
-To understand *why* architectural decisions were made, refer to:
-- [`docs/adr/001-why-cpp-for-matching-engine.md`](docs/adr/001-why-cpp-for-matching-engine.md)
-- [`docs/adr/002-why-protobuf-contract-first.md`](docs/adr/002-why-protobuf-contract-first.md)
-- [`docs/adr/003-double-entry-accounting-principles.md`](docs/adr/003-double-entry-accounting-principles.md)
+Debezium has a sharp edge: the outbox event timestamp field must not point at the created-at column, because the column is a zoned timestamp rather than the required 64-bit integer, and the connector task fails without publishing anything. The Connect REST port is published as 18083 so it does not collide with the settlement service on 8083. Schema registry subjects are record names, not topic-value names.
 
----
+The observability stack has its own traps. Jaeger all-in-one does not compute dependency links, so the service map panel is empty there; the real service graph lives in Tempo. Grafana Drilldown shows no data without a Tempo data source.
 
-## 5. Engineering Roadmap (SRE, Platform & GitOps Optimization)
+Alerting covers availability, latency, Redis, Kafka, NATS and PostgreSQL health, outbox and journal backlog, WebSocket backpressure and host capacity.
 
-| Version | Phase | Infrastructure Target & SRE Problem |
-| :--- | :--- | :--- |
-| **v1.0.0** *(Current)* | **Docker Compose Baseline** | Unified local orchestrator using pre-built GHCR images. Full OpenTelemetry tracing pipeline. |
-| **v1.1.0** | **GitOps & Ephemeral Environments** | Automate deployment via ArgoCD. Pull Request preview environments deployed dynamically into Kubernetes namespaces for zero-friction end-to-end PR validation. |
-| **v1.2.0** | **High-Availability Message Backbone** | Deploy Redpanda / Apache Kafka cluster on K8s (using Strimzi operator). Implement automated PostgreSQL multi-AZ replication with PgBouncer connection pooling. |
-| **v2.0.0** | **Bare-Metal NUMA Tuning & Chaos Engineering** | Implement Linux CPU-pinning (cgroups/isolcpus) and NUMA node allocation on K8s for Matching Engine pods to eliminate OS context-switch jitter. Chaos Mesh automated fault injection (simulating node crash, packet loss, disk latency spikes). |
+Load tests use k6 with explicit service-level objectives: order HTTP p99 under five hundred milliseconds, failed requests under one percent, matching p99 under five milliseconds, meaningful WebSocket fan-out, outbox age under a minute and risk journal lag under thirty seconds. `make stress-order` and `make stress-ws` run the two scenarios. The environment example file is not authoritative and has drifted before, so compose files and config maps are the source of truth for variables.
+
+## Future direction
+
+Business: the platform roadmap is about reliability and scale rather than new products, because product behavior lives in the services.
+
+Technical: GitOps with preview environments, a highly available Kafka and PostgreSQL backbone, PgBouncer, Redis Sentinel or Cluster, and read replicas for settlement and market data. CPU pinning and NUMA placement for the matching engine, eBPF rate limiting and chaos testing are the low-latency phase.
+
+Boundaries: the WebSocket edge is the first candidate to split into its own deployment, followed by read-only portfolio and reporting services. Kafka on Kubernetes is intended to move from local Redpanda to the Strimzi operator in production.
 

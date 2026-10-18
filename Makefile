@@ -4,7 +4,7 @@ SHELL := /bin/bash
 # `docker compose` CLI plugin. Prefer the plugin, fall back to the standalone.
 COMPOSE ?= $(shell docker compose version >/dev/null 2>&1 && echo "docker compose" || echo "docker-compose")
 
-.PHONY: help net infra-up monitor-up app-pull app-up app-local up up-prod down down-v reset k8s-deploy k8s-down logs-app ps stress-order stress-ws
+.PHONY: help net infra-up monitor-up app-pull app-up app-local up up-prod down down-v reset k8s-deploy k8s-down logs-app ps stress-order stress-ws check
 
 help:
 	@echo "======================================================================="
@@ -24,6 +24,7 @@ help:
 	@echo "  make ps             - View status of all active containers"
 	@echo "  make stress-order   - Run k6 order-flow load test"
 	@echo "  make stress-ws      - Run k6 WebSocket fan-out test"
+	@echo "  make check          - Validate compose files, alert rules and kustomize output"
 	@echo "======================================================================="
 
 # Shared docker network for inter-container communication
@@ -110,6 +111,23 @@ stress-order:
 
 stress-ws:
 	k6 run -e GATEWAY=http://localhost:8080 stress/k6-ws-priceboard.js
+
+# 6b. Local validation (no containers are started)
+check:
+	$(COMPOSE) -f deployments/docker/docker-compose.infra.yml config -q
+	$(COMPOSE) -f deployments/docker/docker-compose.app.yml config -q
+	$(COMPOSE) -f deployments/docker/docker-compose.local.yml config -q
+	$(COMPOSE) -f deployments/observability/docker-compose.monitor.yml config -q
+	@if command -v promtool >/dev/null 2>&1; then \
+		promtool check rules deployments/observability/prometheus/alert_rules.yml; \
+	else \
+		echo "promtool not installed; skipping alert rule validation"; \
+	fi
+	@if command -v kubectl >/dev/null 2>&1 && kubectl version --client >/dev/null 2>&1; then \
+		kubectl kustomize deployments/k8s >/dev/null; \
+	else \
+		echo "kubectl unavailable; skipping kustomize validation"; \
+	fi
 
 # 7. Kubernetes Cluster Deployment
 k8s-deploy:

@@ -1,0 +1,101 @@
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: trading-exchange
+  description: Microservice trading exchange with a single-writer matching core and event-driven read models.
+spec:
+  owner: nguyen-anh-hao
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: trading-infra-deploy
+  description: Compose, Kubernetes, observability and load-test assets for the exchange.
+  annotations:
+    github.com/project-slug: nguyen-anh-hao/trading-infra-deploy
+  tags: [docker, kubernetes, observability]
+spec:
+  type: tool
+  lifecycle: experimental
+  owner: nguyen-anh-hao
+  system: trading-exchange
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: postgres-settlement
+  description: System-of-record database for the ledger, trades and balances.
+spec:
+  type: database
+  owner: nguyen-anh-hao
+  system: trading-exchange
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: postgres-orders
+  description: Orders, fills, reservations, idempotency claims and outbox.
+spec:
+  type: database
+  owner: nguyen-anh-hao
+  system: trading-exchange
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: postgres-risk
+  description: Materialized risk balances and audit journal.
+spec:
+  type: database
+  owner: nguyen-anh-hao
+  system: trading-exchange
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: redis
+  description: Shared hot state for auth, risk, orders, market data and accounting.
+spec:
+  type: cache
+  owner: nguyen-anh-hao
+  system: trading-exchange
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: kafka
+  description: Durable event backbone fed by transactional outboxes and Debezium.
+spec:
+  type: message-broker
+  owner: nguyen-anh-hao
+  system: trading-exchange
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: nats
+  description: JetStream transport for executed trades.
+spec:
+  type: message-broker
+  owner: nguyen-anh-hao
+  system: trading-exchange
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: timescaledb
+  description: Append-only raw tick store.
+spec:
+  type: time-series-database
+  owner: nguyen-anh-hao
+  system: trading-exchange
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: schema-registry
+  description: Confluent Schema Registry for Avro subjects.
+spec:
+  type: schema-registry
+  owner: nguyen-anh-hao
+  system: trading-exchange
