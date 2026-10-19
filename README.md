@@ -44,9 +44,9 @@ Debezium has a sharp edge: the outbox event timestamp field must not point at th
 
 The observability stack has its own traps. Jaeger all-in-one does not compute dependency links, so the service map panel is empty there; the real service graph lives in Tempo. Grafana Drilldown shows no data without a Tempo data source.
 
-Alerting covers availability, latency, Redis, Kafka, NATS and PostgreSQL health, outbox and journal backlog, WebSocket backpressure and host capacity.
+Alerting covers availability, latency, Redis, Kafka, NATS and PostgreSQL health, outbox and journal backlog, WebSocket backpressure and host capacity. Baseline thresholds are catalogued in [`docs/BASELINES.md`](docs/BASELINES.md) (generated from [`docs/baselines.yaml`](docs/baselines.yaml)) and rendered into Grafana: `Trading — Baseline Scorecard` shows PASS/FAIL per service, while `Trading — Service Overview` / `Service Detail` carry the same thresholds and dashed baseline lines. `make baseline-render` regenerates the rules and dashboards; `make baseline-check` fails CI when they are stale.
 
-Load tests use k6 with explicit service-level objectives: order HTTP p99 under five hundred milliseconds, failed requests under one percent, matching p99 under five milliseconds, meaningful WebSocket fan-out, outbox age under a minute and risk journal lag under thirty seconds. `make stress-order` and `make stress-ws` run the two scenarios. The environment example file is not authoritative and has drifted before, so compose files and config maps are the source of truth for variables.
+Load tests use k6 with explicit service-level objectives: order HTTP p99 under five hundred milliseconds, failed requests under one percent, matching p99 under five milliseconds, meaningful WebSocket fan-out, outbox age under a minute and risk journal lag under thirty seconds. `make stress-order`, `make stress-ws` and `make baseline` run the scenarios. The local compose file pins `cpus`/`mem_limit` so absolute latency and CPU/quota ratios are comparable with production. The environment example file is not authoritative and has drifted before, so compose files and config maps are the source of truth for variables.
 
 ## Future direction
 

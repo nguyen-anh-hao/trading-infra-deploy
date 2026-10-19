@@ -11,7 +11,7 @@
       "title": "CPU Usage",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
       "targets": [
-        { "expr": "rate(container_cpu_usage_seconds_total[5m])", "legendFormat": "{{name}}" }
+        { "expr": "sum by (service) (rate(container_cpu_usage_seconds_total{service!=\"\"}[5m]))", "legendFormat": "{{service}}" }
       ]
     },
     {
@@ -19,7 +19,7 @@
       "title": "Memory Usage",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
       "targets": [
-        { "expr": "container_memory_usage_bytes", "legendFormat": "{{name}}" }
+        { "expr": "sum by (service) (container_memory_usage_bytes{service!=\"\"})", "legendFormat": "{{service}}" }
       ]
     },
     {
@@ -27,8 +27,8 @@
       "title": "Network Socket I/O",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
       "targets": [
-        { "expr": "rate(container_network_receive_bytes_total[5m])", "legendFormat": "rx {{name}}" },
-        { "expr": "rate(container_network_transmit_bytes_total[5m])", "legendFormat": "tx {{name}}" }
+        { "expr": "sum by (service) (rate(container_network_receive_bytes_total{service!=\"\"}[5m]))", "legendFormat": "rx {{service}}" },
+        { "expr": "sum by (service) (rate(container_network_transmit_bytes_total{service!=\"\"}[5m]))", "legendFormat": "tx {{service}}" }
       ]
     },
     {
@@ -36,7 +36,7 @@
       "title": "CFS Throttling",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
       "targets": [
-        { "expr": "rate(container_cpu_cfs_throttled_seconds_total[5m])", "legendFormat": "{{name}}" }
+        { "expr": "sum by (service) (rate(container_cpu_cfs_throttled_seconds_total{service!=\"\"}[5m]))", "legendFormat": "{{service}}" }
       ]
     }
   ]

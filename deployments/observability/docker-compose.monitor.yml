@@ -116,6 +116,8 @@ services:
       - --enable-feature=exemplar-storage
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/recording_rules.yml:/etc/prometheus/recording_rules.yml:ro
+      - ./prometheus/recording_rules_baselines.yml:/etc/prometheus/recording_rules_baselines.yml:ro
       - ./prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
     ports:
       - "9090:9090"

@@ -1,0 +1,925 @@
+{
+  "uid": "trading-service-detail",
+  "title": "Trading — Service Detail",
+  "description": "Per-service RED, saturation, runtime and business metrics. Pick a service above; baselines are defined in docs/baselines.yaml.",
+  "tags": [
+    "trading",
+    "services",
+    "red",
+    "baseline"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "links": [
+    {
+      "title": "Baseline documentation",
+      "url": "https://github.com/nguyen-anh-hao/trading-infra-deploy/blob/main/docs/BASELINES.md",
+      "targetBlank": true
+    },
+    {
+      "title": "All services",
+      "url": "/d/trading-service-overview",
+      "targetBlank": false
+    },
+    {
+      "title": "Baseline Scorecard",
+      "url": "/d/trading-baseline-scorecard",
+      "targetBlank": false
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "label": "Service",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": "label_values(up{job=~\"api-gateway|order-service|risk-engine|market-data-service|matching-engine|clearing-settlement|promotion-service|accounting-tax-service\"}, service)",
+        "includeAll": false,
+        "multi": false,
+        "refresh": 2,
+        "sort": 1,
+        "current": {
+          "text": "order-service",
+          "value": "order-service"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 100,
+      "type": "text",
+      "title": "Baseline legend",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "### Baseline legend\n\n| Baseline | Target | Severity |\n|---|---|---|\n| HTTP 5xx ratio | <= 0.005 percentunit | critical |\n| Scrape target up | >= 1 short | critical |\n| Order path p99 | <= 0.5 s | critical |\n| HTTP p99 | <= 1 s | warning |\n| Matching engine p99 | <= 0.005 s | critical |\n| HTTP p99/p50 tail ratio | <= 5 short | warning |\n| ... 13 more | see Baseline Scorecard | |\n\nFull catalog and sources: `docs/BASELINES.md` / `docs/baselines.yaml`."
+      }
+    },
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Up",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(up{service=\"$service\"})"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Request rate",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(service:http_requests:rate5m{service=\"$service\"})"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "5xx ratio",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "service:http_error_ratio5m{service=\"$service\"}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.005
+              },
+              {
+                "color": "red",
+                "value": 0.01
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "p99 latency",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "service:http_request_duration_seconds:p99{service=\"$service\"}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.5
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Request rate by route / status",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 12
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (path, status) (rate(http_requests_total{service=\"$service\"}[5m]))",
+          "legendFormat": "{{path}} {{status}}"
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (uri, status) (rate(http_server_requests_seconds_count{service=\"$service\"}[5m]))",
+          "legendFormat": "{{uri}} {{status}}"
+        },
+        {
+          "refId": "C",
+          "expr": "sum(http_requests_in_flight{service=\"$service\"})",
+          "legendFormat": "in flight"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Latency distribution",
+      "description": "Baseline: p99 <= 1s generic, order path <= 500ms (docs/baselines.yaml#http_p99).",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 12
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "service:http_request_duration_seconds:p50{service=\"$service\"}",
+          "legendFormat": "p50"
+        },
+        {
+          "refId": "B",
+          "expr": "service:http_request_duration_seconds:p95{service=\"$service\"}",
+          "legendFormat": "p95"
+        },
+        {
+          "refId": "C",
+          "expr": "service:http_request_duration_seconds:p99{service=\"$service\"}",
+          "legendFormat": "p99"
+        },
+        {
+          "refId": "D",
+          "expr": "service:http_request_duration_seconds:p999{service=\"$service\"}",
+          "legendFormat": "p999"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.5
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "custom": {
+            "thresholdsStyle": {
+              "mode": "dashed",
+              "lineWidth": 1,
+              "colorMode": "custom"
+            }
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "CPU usage / quota",
+      "description": "Baseline: <= 70% (docs/baselines.yaml#cpu_usage_ratio).",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 20
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "service:cpu:usage_ratio5m{service=\"$service\"}",
+          "legendFormat": "CPU/quota"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.7
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "custom": {
+            "thresholdsStyle": {
+              "mode": "dashed",
+              "lineWidth": 1,
+              "colorMode": "custom"
+            }
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "CFS throttled periods ratio",
+      "description": "Baseline: <= 1% (docs/baselines.yaml#cpu_throttled_ratio).",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 20
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "service:cpu:throttled_ratio5m{service=\"$service\"}",
+          "legendFormat": "throttled"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.01
+              },
+              {
+                "color": "red",
+                "value": 0.05
+              }
+            ]
+          },
+          "custom": {
+            "thresholdsStyle": {
+              "mode": "dashed",
+              "lineWidth": 1,
+              "colorMode": "custom"
+            }
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Memory working set / limit",
+      "description": "Baseline: <= 80% (docs/baselines.yaml#memory_ratio).",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 20
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "service:memory:working_set_ratio{service=\"$service\"}",
+          "legendFormat": "memory/limit"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.8
+              },
+              {
+                "color": "red",
+                "value": 0.95
+              }
+            ]
+          },
+          "custom": {
+            "thresholdsStyle": {
+              "mode": "dashed",
+              "lineWidth": 1,
+              "colorMode": "custom"
+            }
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Go runtime",
+      "description": "Go services: goroutines, heap, GC CPU fraction (docs/baselines.yaml#go_gc_cpu_fraction).",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 28
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "go_goroutines{service=\"$service\"}",
+          "legendFormat": "goroutines"
+        },
+        {
+          "refId": "B",
+          "expr": "go_memstats_heap_inuse_bytes{service=\"$service\"}",
+          "legendFormat": "heap inuse"
+        },
+        {
+          "refId": "C",
+          "expr": "go_memstats_gc_cpu_fraction{service=\"$service\"}",
+          "legendFormat": "GC CPU fraction"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.05
+              },
+              {
+                "color": "red",
+                "value": 0.1
+              }
+            ]
+          },
+          "custom": {
+            "thresholdsStyle": {
+              "mode": "dashed",
+              "lineWidth": 1,
+              "colorMode": "custom"
+            }
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "JVM runtime",
+      "description": "Spring services: heap and GC pause p99 (docs/baselines.yaml#jvm_gc_pause_p99).",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 28
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(jvm_memory_used_bytes{service=\"$service\",area=\"heap\"})",
+          "legendFormat": "heap used"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(jvm_gc_pause_seconds_bucket{service=\"$service\"}[5m])))",
+          "legendFormat": "GC pause p99"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.2
+              },
+              {
+                "color": "red",
+                "value": 0.5
+              }
+            ]
+          },
+          "custom": {
+            "thresholdsStyle": {
+              "mode": "dashed",
+              "lineWidth": 1,
+              "colorMode": "custom"
+            }
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "DB pool and Node event loop",
+      "description": "Hikari pending connections should stay at 0; Node event loop lag < 100ms.",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 36
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "hikaricp_connections_active{service=\"$service\"}",
+          "legendFormat": "hikari active"
+        },
+        {
+          "refId": "B",
+          "expr": "hikaricp_connections_pending{service=\"$service\"}",
+          "legendFormat": "hikari pending"
+        },
+        {
+          "refId": "C",
+          "expr": "nodejs_eventloop_lag_p99_seconds{service=\"$service\"}",
+          "legendFormat": "event loop p99"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.1
+              },
+              {
+                "color": "red",
+                "value": 0.5
+              }
+            ]
+          },
+          "custom": {
+            "thresholdsStyle": {
+              "mode": "dashed",
+              "lineWidth": 1,
+              "colorMode": "custom"
+            }
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Outbox and journal",
+      "description": "Baselines: outbox age <= 60s, journal lag <= 30s (docs/baselines.yaml#outbox_oldest_age).",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 44
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "trading_outbox_oldest_age_seconds{service=\"$service\"}",
+          "legendFormat": "outbox age"
+        },
+        {
+          "refId": "B",
+          "expr": "trading_outbox_pending{service=\"$service\"}",
+          "legendFormat": "outbox pending"
+        },
+        {
+          "refId": "C",
+          "expr": "trading_risk_journal_lag_seconds{service=\"$service\"}",
+          "legendFormat": "journal lag"
+        },
+        {
+          "refId": "D",
+          "expr": "trading_risk_journal_length{service=\"$service\"}",
+          "legendFormat": "journal length"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 30
+              },
+              {
+                "color": "red",
+                "value": 60
+              }
+            ]
+          },
+          "custom": {
+            "thresholdsStyle": {
+              "mode": "dashed",
+              "lineWidth": 1,
+              "colorMode": "custom"
+            }
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Orders / trades / WebSocket",
+      "description": "Business counters for order-service and market-data-service.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 44
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (status) (increase(trading_orders_total{service=\"$service\"}[5m]))",
+          "legendFormat": "orders {{status}}"
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (symbol) (rate(trades_total{service=\"$service\"}[5m]))",
+          "legendFormat": "trades/s {{symbol}}"
+        },
+        {
+          "refId": "C",
+          "expr": "trading_ws_connections{service=\"$service\"}",
+          "legendFormat": "ws clients"
+        },
+        {
+          "refId": "D",
+          "expr": "increase(trading_ws_dropped_total{service=\"$service\"}[5m])",
+          "legendFormat": "ws dropped/5m"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Matching engine and risk",
+      "description": "Matching p99 <= 5ms; risk decisions should be visible by outcome.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 52
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(trading_matching_latency_seconds_bucket{service=\"$service\"}[5m])))",
+          "legendFormat": "matching p99"
+        },
+        {
+          "refId": "B",
+          "expr": "rate(trading_matching_orders_total{service=\"$service\"}[5m])",
+          "legendFormat": "orders/s"
+        },
+        {
+          "refId": "C",
+          "expr": "rate(trading_matching_trades_total{service=\"$service\"}[5m])",
+          "legendFormat": "trades/s"
+        },
+        {
+          "refId": "D",
+          "expr": "rate(trading_matching_errors_total{service=\"$service\"}[5m])",
+          "legendFormat": "errors/s"
+        },
+        {
+          "refId": "E",
+          "expr": "trading_matching_active_connections{service=\"$service\"}",
+          "legendFormat": "active connections"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.005
+              },
+              {
+                "color": "red",
+                "value": 0.01
+              }
+            ]
+          },
+          "custom": {
+            "thresholdsStyle": {
+              "mode": "dashed",
+              "lineWidth": 1,
+              "colorMode": "custom"
+            }
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "Settlement / accounting / promotion",
+      "description": "Business correctness counters; any failure is an incident.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 52
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (status) (increase(trading_settlements_total{service=\"$service\"}[5m]))",
+          "legendFormat": "settlements {{status}}"
+        },
+        {
+          "refId": "B",
+          "expr": "increase(trading_accounting_errors_total{service=\"$service\"}[5m])",
+          "legendFormat": "accounting errors/5m"
+        },
+        {
+          "refId": "C",
+          "expr": "increase(trading_promotion_errors_total{service=\"$service\"}[5m])",
+          "legendFormat": "promotion errors/5m"
+        },
+        {
+          "refId": "D",
+          "expr": "rate(trading_market_ticks_ingested_total{service=\"$service\"}[5m])",
+          "legendFormat": "ticks/s"
+        },
+        {
+          "refId": "E",
+          "expr": "rate(trading_vouchers_redeemed_total{service=\"$service\"}[5m])",
+          "legendFormat": "vouchers/s"
+        },
+        {
+          "refId": "F",
+          "expr": "rate(trading_faucet_claims_total{service=\"$service\"}[5m])",
+          "legendFormat": "faucet claims/s"
+        },
+        {
+          "refId": "G",
+          "expr": "rate(trading_voucher_rejections_total{service=\"$service\"}[5m])",
+          "legendFormat": "voucher rejects/s"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      }
+    }
+  ]
+}

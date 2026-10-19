@@ -1,0 +1,690 @@
+groups:
+- name: baseline-scorecard
+  interval: 30s
+  rules:
+  - record: baseline:value
+    expr: service:http_error_ratio5m
+    labels:
+      baseline: http_5xx_ratio
+      title: HTTP 5xx ratio
+      category: availability
+      target: '0.005'
+      comparator: le
+      severity: critical
+      unit: percentunit
+  - record: baseline:violation
+    expr: (service:http_error_ratio5m) > bool 0.005
+    labels:
+      baseline: http_5xx_ratio
+      title: HTTP 5xx ratio
+      category: availability
+      target: '0.005'
+      comparator: le
+      severity: critical
+      unit: percentunit
+  - record: baseline:value
+    expr: service:http_error_ratio1h
+    labels:
+      baseline: http_5xx_ratio_burn_fast
+      title: Fast error-budget burn (1h)
+      category: availability
+      target: '0.072'
+      comparator: le
+      severity: critical
+      unit: percentunit
+  - record: baseline:violation
+    expr: (service:http_error_ratio1h) > bool 0.072
+    labels:
+      baseline: http_5xx_ratio_burn_fast
+      title: Fast error-budget burn (1h)
+      category: availability
+      target: '0.072'
+      comparator: le
+      severity: critical
+      unit: percentunit
+  - record: baseline:value
+    expr: up{job=~"api-gateway|order-service|risk-engine|market-data-service|matching-engine|clearing-settlement|promotion-service|accounting-tax-service"}
+    labels:
+      baseline: scrape_up
+      title: Scrape target up
+      category: availability
+      target: '1'
+      comparator: ge
+      severity: critical
+      unit: short
+  - record: baseline:violation
+    expr: (up{job=~"api-gateway|order-service|risk-engine|market-data-service|matching-engine|clearing-settlement|promotion-service|accounting-tax-service"})
+      < bool 1
+    labels:
+      baseline: scrape_up
+      title: Scrape target up
+      category: availability
+      target: '1'
+      comparator: ge
+      severity: critical
+      unit: short
+  - record: baseline:value
+    expr: scrape_duration_seconds{job=~"api-gateway|order-service|risk-engine|market-data-service|matching-engine|clearing-settlement|promotion-service|accounting-tax-service"}
+    labels:
+      baseline: scrape_duration
+      title: Scrape duration
+      category: availability
+      target: '2.5'
+      comparator: le
+      severity: warning
+      unit: s
+  - record: baseline:violation
+    expr: (scrape_duration_seconds{job=~"api-gateway|order-service|risk-engine|market-data-service|matching-engine|clearing-settlement|promotion-service|accounting-tax-service"})
+      > bool 2.5
+    labels:
+      baseline: scrape_duration
+      title: Scrape duration
+      category: availability
+      target: '2.5'
+      comparator: le
+      severity: warning
+      unit: s
+  - record: baseline:value
+    expr: histogram_quantile(0.99, sum by (service, le) (rate(http_request_duration_seconds_bucket{service="order-service",path=~"/orders.*"}[5m])))
+    labels:
+      baseline: order_path_p99
+      title: Order path p99
+      category: latency
+      target: '0.5'
+      comparator: le
+      severity: critical
+      unit: s
+  - record: baseline:violation
+    expr: (histogram_quantile(0.99, sum by (service, le) (rate(http_request_duration_seconds_bucket{service="order-service",path=~"/orders.*"}[5m]))))
+      > bool 0.5
+    labels:
+      baseline: order_path_p99
+      title: Order path p99
+      category: latency
+      target: '0.5'
+      comparator: le
+      severity: critical
+      unit: s
+  - record: baseline:value
+    expr: service:http_request_duration_seconds:p99
+    labels:
+      baseline: http_p99
+      title: HTTP p99
+      category: latency
+      target: '1'
+      comparator: le
+      severity: warning
+      unit: s
+  - record: baseline:violation
+    expr: (service:http_request_duration_seconds:p99) > bool 1
+    labels:
+      baseline: http_p99
+      title: HTTP p99
+      category: latency
+      target: '1'
+      comparator: le
+      severity: warning
+      unit: s
+  - record: baseline:value
+    expr: histogram_quantile(0.99, sum by (service, le) (rate(trading_matching_latency_seconds_bucket[5m])))
+    labels:
+      baseline: matching_p99
+      title: Matching engine p99
+      category: latency
+      target: '0.005'
+      comparator: le
+      severity: critical
+      unit: s
+  - record: baseline:violation
+    expr: (histogram_quantile(0.99, sum by (service, le) (rate(trading_matching_latency_seconds_bucket[5m])))) > bool 0.005
+    labels:
+      baseline: matching_p99
+      title: Matching engine p99
+      category: latency
+      target: '0.005'
+      comparator: le
+      severity: critical
+      unit: s
+  - record: baseline:value
+    expr: histogram_quantile(0.999, sum by (service, le) (rate(trading_matching_latency_seconds_bucket[5m])))
+    labels:
+      baseline: matching_p999
+      title: Matching engine p999
+      category: latency
+      target: '0.01'
+      comparator: le
+      severity: warning
+      unit: s
+  - record: baseline:violation
+    expr: (histogram_quantile(0.999, sum by (service, le) (rate(trading_matching_latency_seconds_bucket[5m])))) > bool 0.01
+    labels:
+      baseline: matching_p999
+      title: Matching engine p999
+      category: latency
+      target: '0.01'
+      comparator: le
+      severity: warning
+      unit: s
+  - record: baseline:value
+    expr: service:http_request_duration_seconds:p99 / clamp_min(service:http_request_duration_seconds:p50, 0.0001)
+    labels:
+      baseline: tail_ratio_p99_p50
+      title: HTTP p99/p50 tail ratio
+      category: latency
+      target: '5'
+      comparator: le
+      severity: warning
+      unit: short
+  - record: baseline:violation
+    expr: (service:http_request_duration_seconds:p99 / clamp_min(service:http_request_duration_seconds:p50, 0.0001)) > bool
+      5
+    labels:
+      baseline: tail_ratio_p99_p50
+      title: HTTP p99/p50 tail ratio
+      category: latency
+      target: '5'
+      comparator: le
+      severity: warning
+      unit: short
+  - record: baseline:value
+    expr: histogram_quantile(0.99, sum by (service, le) (rate(trading_market_ws_send_duration_seconds_bucket[5m])))
+    labels:
+      baseline: ws_send_p99
+      title: Tick -> WebSocket p99
+      category: latency
+      target: '0.1'
+      comparator: le
+      severity: warning
+      unit: s
+  - record: baseline:violation
+    expr: (histogram_quantile(0.99, sum by (service, le) (rate(trading_market_ws_send_duration_seconds_bucket[5m])))) > bool
+      0.1
+    labels:
+      baseline: ws_send_p99
+      title: Tick -> WebSocket p99
+      category: latency
+      target: '0.1'
+      comparator: le
+      severity: warning
+      unit: s
+  - record: baseline:value
+    expr: service:cpu:throttled_ratio5m
+    labels:
+      baseline: cpu_throttled_ratio
+      title: CFS throttled periods ratio
+      category: saturation
+      target: '0.01'
+      comparator: le
+      severity: warning
+      unit: percentunit
+  - record: baseline:violation
+    expr: (service:cpu:throttled_ratio5m) > bool 0.01
+    labels:
+      baseline: cpu_throttled_ratio
+      title: CFS throttled periods ratio
+      category: saturation
+      target: '0.01'
+      comparator: le
+      severity: warning
+      unit: percentunit
+  - record: baseline:value
+    expr: service:cpu:usage_ratio5m
+    labels:
+      baseline: cpu_usage_ratio
+      title: CPU usage / quota
+      category: saturation
+      target: '0.7'
+      comparator: le
+      severity: warning
+      unit: percentunit
+  - record: baseline:violation
+    expr: (service:cpu:usage_ratio5m) > bool 0.7
+    labels:
+      baseline: cpu_usage_ratio
+      title: CPU usage / quota
+      category: saturation
+      target: '0.7'
+      comparator: le
+      severity: warning
+      unit: percentunit
+  - record: baseline:value
+    expr: service:memory:working_set_ratio
+    labels:
+      baseline: memory_ratio
+      title: Memory working set / limit
+      category: saturation
+      target: '0.8'
+      comparator: le
+      severity: warning
+      unit: percentunit
+  - record: baseline:violation
+    expr: (service:memory:working_set_ratio) > bool 0.8
+    labels:
+      baseline: memory_ratio
+      title: Memory working set / limit
+      category: saturation
+      target: '0.8'
+      comparator: le
+      severity: warning
+      unit: percentunit
+  - record: baseline:value
+    expr: go_memstats_gc_cpu_fraction
+    labels:
+      baseline: go_gc_cpu_fraction
+      title: Go GC CPU fraction
+      category: saturation
+      target: '0.05'
+      comparator: le
+      severity: warning
+      unit: percentunit
+  - record: baseline:violation
+    expr: (go_memstats_gc_cpu_fraction) > bool 0.05
+    labels:
+      baseline: go_gc_cpu_fraction
+      title: Go GC CPU fraction
+      category: saturation
+      target: '0.05'
+      comparator: le
+      severity: warning
+      unit: percentunit
+  - record: baseline:value
+    expr: histogram_quantile(0.99, sum by (service, le) (rate(jvm_gc_pause_seconds_bucket[5m])))
+    labels:
+      baseline: jvm_gc_pause_p99
+      title: JVM GC pause p99
+      category: saturation
+      target: '0.2'
+      comparator: le
+      severity: warning
+      unit: s
+  - record: baseline:violation
+    expr: (histogram_quantile(0.99, sum by (service, le) (rate(jvm_gc_pause_seconds_bucket[5m])))) > bool 0.2
+    labels:
+      baseline: jvm_gc_pause_p99
+      title: JVM GC pause p99
+      category: saturation
+      target: '0.2'
+      comparator: le
+      severity: warning
+      unit: s
+  - record: baseline:value
+    expr: hikaricp_connections_pending
+    labels:
+      baseline: hikari_pending
+      title: Hikari pending connections
+      category: saturation
+      target: '0'
+      comparator: le
+      severity: warning
+      unit: short
+  - record: baseline:violation
+    expr: (hikaricp_connections_pending) > bool 0
+    labels:
+      baseline: hikari_pending
+      title: Hikari pending connections
+      category: saturation
+      target: '0'
+      comparator: le
+      severity: warning
+      unit: short
+  - record: baseline:value
+    expr: max by (service) (pg_blocked_locks)
+    labels:
+      baseline: postgres_blocked_locks
+      title: PostgreSQL blocked locks
+      category: saturation
+      target: '0'
+      comparator: le
+      severity: critical
+      unit: short
+  - record: baseline:violation
+    expr: (max by (service) (pg_blocked_locks)) > bool 0
+    labels:
+      baseline: postgres_blocked_locks
+      title: PostgreSQL blocked locks
+      category: saturation
+      target: '0'
+      comparator: le
+      severity: critical
+      unit: short
+  - record: baseline:value
+    expr: max by (service) (pg_connections)
+    labels:
+      baseline: postgres_connections
+      title: PostgreSQL connections
+      category: saturation
+      target: '80'
+      comparator: le
+      severity: warning
+      unit: short
+  - record: baseline:violation
+    expr: (max by (service) (pg_connections)) > bool 80
+    labels:
+      baseline: postgres_connections
+      title: PostgreSQL connections
+      category: saturation
+      target: '80'
+      comparator: le
+      severity: warning
+      unit: short
+  - record: baseline:value
+    expr: redis_memory_used_bytes / clamp_min(redis_memory_max_bytes, 1)
+    labels:
+      baseline: redis_memory_ratio
+      title: Redis memory ratio
+      category: saturation
+      target: '0.8'
+      comparator: le
+      severity: warning
+      unit: percentunit
+  - record: baseline:violation
+    expr: (redis_memory_used_bytes / clamp_min(redis_memory_max_bytes, 1)) > bool 0.8
+    labels:
+      baseline: redis_memory_ratio
+      title: Redis memory ratio
+      category: saturation
+      target: '0.8'
+      comparator: le
+      severity: warning
+      unit: percentunit
+  - record: baseline:value
+    expr: increase(redis_evicted_keys_total[5m])
+    labels:
+      baseline: redis_evictions
+      title: Redis evictions
+      category: saturation
+      target: '0'
+      comparator: le
+      severity: critical
+      unit: short
+  - record: baseline:violation
+    expr: (increase(redis_evicted_keys_total[5m])) > bool 0
+    labels:
+      baseline: redis_evictions
+      title: Redis evictions
+      category: saturation
+      target: '0'
+      comparator: le
+      severity: critical
+      unit: short
+  - record: baseline:value
+    expr: max by (service) (trading_outbox_oldest_age_seconds)
+    labels:
+      baseline: outbox_oldest_age
+      title: Outbox oldest age
+      category: pipeline
+      target: '60'
+      comparator: le
+      severity: critical
+      unit: s
+  - record: baseline:violation
+    expr: (max by (service) (trading_outbox_oldest_age_seconds)) > bool 60
+    labels:
+      baseline: outbox_oldest_age
+      title: Outbox oldest age
+      category: pipeline
+      target: '60'
+      comparator: le
+      severity: critical
+      unit: s
+  - record: baseline:value
+    expr: max by (service) (trading_outbox_pending)
+    labels:
+      baseline: outbox_pending
+      title: Outbox pending rows
+      category: pipeline
+      target: '100'
+      comparator: le
+      severity: warning
+      unit: short
+  - record: baseline:violation
+    expr: (max by (service) (trading_outbox_pending)) > bool 100
+    labels:
+      baseline: outbox_pending
+      title: Outbox pending rows
+      category: pipeline
+      target: '100'
+      comparator: le
+      severity: warning
+      unit: short
+  - record: baseline:value
+    expr: max by (service) (trading_risk_journal_lag_seconds)
+    labels:
+      baseline: risk_journal_lag
+      title: Risk journal lag
+      category: pipeline
+      target: '30'
+      comparator: le
+      severity: critical
+      unit: s
+  - record: baseline:violation
+    expr: (max by (service) (trading_risk_journal_lag_seconds)) > bool 30
+    labels:
+      baseline: risk_journal_lag
+      title: Risk journal lag
+      category: pipeline
+      target: '30'
+      comparator: le
+      severity: critical
+      unit: s
+  - record: baseline:value
+    expr: max by (service) (trading_risk_journal_length)
+    labels:
+      baseline: risk_journal_length
+      title: Risk journal length
+      category: pipeline
+      target: '10000'
+      comparator: le
+      severity: warning
+      unit: short
+  - record: baseline:violation
+    expr: (max by (service) (trading_risk_journal_length)) > bool 10000
+    labels:
+      baseline: risk_journal_length
+      title: Risk journal length
+      category: pipeline
+      target: '10000'
+      comparator: le
+      severity: warning
+      unit: short
+  - record: baseline:value
+    expr: increase(trading_risk_journal_apply_errors_total[5m])
+    labels:
+      baseline: risk_journal_apply_errors
+      title: Risk journal apply errors
+      category: pipeline
+      target: '0'
+      comparator: le
+      severity: critical
+      unit: short
+  - record: baseline:violation
+    expr: (increase(trading_risk_journal_apply_errors_total[5m])) > bool 0
+    labels:
+      baseline: risk_journal_apply_errors
+      title: Risk journal apply errors
+      category: pipeline
+      target: '0'
+      comparator: le
+      severity: critical
+      unit: short
+  - record: baseline:value
+    expr: max by (service, consumergroup, topic) (kafka_consumergroup_lag)
+    labels:
+      baseline: kafka_consumer_lag
+      title: Kafka consumer lag
+      category: pipeline
+      target: '1000'
+      comparator: le
+      severity: warning
+      unit: short
+  - record: baseline:violation
+    expr: (max by (service, consumergroup, topic) (kafka_consumergroup_lag)) > bool 1000
+    labels:
+      baseline: kafka_consumer_lag
+      title: Kafka consumer lag
+      category: pipeline
+      target: '1000'
+      comparator: le
+      severity: warning
+      unit: short
+  - record: baseline:value
+    expr: max by (service) (nats_varz_slow_consumers)
+    labels:
+      baseline: nats_slow_consumers
+      title: NATS slow consumers
+      category: pipeline
+      target: '0'
+      comparator: le
+      severity: critical
+      unit: short
+  - record: baseline:violation
+    expr: (max by (service) (nats_varz_slow_consumers)) > bool 0
+    labels:
+      baseline: nats_slow_consumers
+      title: NATS slow consumers
+      category: pipeline
+      target: '0'
+      comparator: le
+      severity: critical
+      unit: short
+  - record: baseline:value
+    expr: max by (service) (nats_varz_pending_bytes)
+    labels:
+      baseline: nats_pending_bytes
+      title: NATS pending bytes
+      category: pipeline
+      target: '10485760'
+      comparator: le
+      severity: warning
+      unit: bytes
+  - record: baseline:violation
+    expr: (max by (service) (nats_varz_pending_bytes)) > bool 10485760
+    labels:
+      baseline: nats_pending_bytes
+      title: NATS pending bytes
+      category: pipeline
+      target: '10485760'
+      comparator: le
+      severity: warning
+      unit: bytes
+  - record: baseline:value
+    expr: increase(trading_ws_dropped_total[5m]) or (0 * trading_ws_connections)
+    labels:
+      baseline: ws_dropped
+      title: WebSocket dropped frames
+      category: pipeline
+      target: '0'
+      comparator: le
+      severity: warning
+      unit: short
+  - record: baseline:violation
+    expr: (increase(trading_ws_dropped_total[5m]) or (0 * trading_ws_connections)) > bool 0
+    labels:
+      baseline: ws_dropped
+      title: WebSocket dropped frames
+      category: pipeline
+      target: '0'
+      comparator: le
+      severity: warning
+      unit: short
+  - record: baseline:value
+    expr: rate(trading_market_dedupe_total[5m]) / clamp_min(rate(trading_market_ticks_ingested_total[5m]), 1e-9)
+    labels:
+      baseline: ticks_dedupe_ratio
+      title: Market dedupe ratio
+      category: pipeline
+      target: '0.01'
+      comparator: le
+      severity: warning
+      unit: percentunit
+  - record: baseline:violation
+    expr: (rate(trading_market_dedupe_total[5m]) / clamp_min(rate(trading_market_ticks_ingested_total[5m]), 1e-9)) > bool
+      0.01
+    labels:
+      baseline: ticks_dedupe_ratio
+      title: Market dedupe ratio
+      category: pipeline
+      target: '0.01'
+      comparator: le
+      severity: warning
+      unit: percentunit
+  - record: baseline:value
+    expr: max by (service) (trading_orders_current{status="UNKNOWN"})
+    labels:
+      baseline: order_unknown_state
+      title: Orders in UNKNOWN state
+      category: business
+      target: '0'
+      comparator: le
+      severity: critical
+      unit: short
+  - record: baseline:violation
+    expr: (max by (service) (trading_orders_current{status="UNKNOWN"})) > bool 0
+    labels:
+      baseline: order_unknown_state
+      title: Orders in UNKNOWN state
+      category: business
+      target: '0'
+      comparator: le
+      severity: critical
+      unit: short
+  - record: baseline:value
+    expr: increase(trading_settlements_total{status="FAILED"}[5m])
+    labels:
+      baseline: settlement_failures
+      title: Settlement failures
+      category: business
+      target: '0'
+      comparator: le
+      severity: critical
+      unit: short
+  - record: baseline:violation
+    expr: (increase(trading_settlements_total{status="FAILED"}[5m])) > bool 0
+    labels:
+      baseline: settlement_failures
+      title: Settlement failures
+      category: business
+      target: '0'
+      comparator: le
+      severity: critical
+      unit: short
+  - record: baseline:value
+    expr: increase(trading_accounting_errors_total[5m])
+    labels:
+      baseline: accounting_errors
+      title: Accounting consumer errors
+      category: business
+      target: '0'
+      comparator: le
+      severity: critical
+      unit: short
+  - record: baseline:violation
+    expr: (increase(trading_accounting_errors_total[5m])) > bool 0
+    labels:
+      baseline: accounting_errors
+      title: Accounting consumer errors
+      category: business
+      target: '0'
+      comparator: le
+      severity: critical
+      unit: short
+  - record: baseline:value
+    expr: increase(trading_promotion_errors_total[5m])
+    labels:
+      baseline: promotion_errors
+      title: Promotion errors
+      category: business
+      target: '0'
+      comparator: le
+      severity: warning
+      unit: short
+  - record: baseline:violation
+    expr: (increase(trading_promotion_errors_total[5m])) > bool 0
+    labels:
+      baseline: promotion_errors
+      title: Promotion errors
+      category: business
+      target: '0'
+      comparator: le
+      severity: warning
+      unit: short

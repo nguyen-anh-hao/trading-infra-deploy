@@ -11,13 +11,13 @@
     {
       "id": 1,
       "type": "stat",
-      "title": "Services up",
+      "title": "Services up ratio",
       "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
-        { "refId": "A", "expr": "sum(up{job=~\"api-gateway|order-service|risk-engine|market-data-service|matching-engine|clearing-settlement|promotion-service|accounting-tax-service\"})" }
+        { "refId": "A", "expr": "sum(up{job=~\"api-gateway|order-service|risk-engine|market-data-service|matching-engine|clearing-settlement|promotion-service|accounting-tax-service\"}) / count(up{job=~\"api-gateway|order-service|risk-engine|market-data-service|matching-engine|clearing-settlement|promotion-service|accounting-tax-service\"})" }
       ],
-      "fieldConfig": { "defaults": { "unit": "short", "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 8 }] } }, "overrides": [] }
+      "fieldConfig": { "defaults": { "unit": "percentunit", "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "orange", "value": 0.99 }, { "color": "green", "value": 1 }] } }, "overrides": [] }
     },
     {
       "id": 2,
@@ -26,7 +26,7 @@
       "gridPos": { "h": 8, "w": 18, "x": 6, "y": 0 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
-        { "refId": "A", "expr": "sum by (job) (rate(http_requests_total[5m]))", "legendFormat": "{{job}}" }
+        { "refId": "A", "expr": "sum by (service) (service:http_requests:rate5m{service=~\"api-gateway|order-service|risk-engine|market-data-service|matching-engine|clearing-settlement|promotion-service|accounting-tax-service\"})", "legendFormat": "{{service}}" }
       ],
       "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] }
     },
@@ -37,7 +37,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
-        { "refId": "A", "expr": "sum by (job) (rate(http_requests_total{status=~\"5..\"}[5m])) / clamp_min(sum by (job) (rate(http_requests_total[5m])), 1)", "legendFormat": "{{job}}" }
+        { "refId": "A", "expr": "service:http_error_ratio5m{service=~\"api-gateway|order-service|risk-engine|market-data-service|matching-engine|clearing-settlement|promotion-service|accounting-tax-service\"}", "legendFormat": "{{service}}" }
       ],
       "fieldConfig": { "defaults": { "unit": "percentunit", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 0.005 }, { "color": "red", "value": 0.01 }] } }, "overrides": [] }
     },
@@ -48,7 +48,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
-        { "refId": "A", "expr": "histogram_quantile(0.99, sum by (job, le) (rate(http_request_duration_seconds_bucket[5m])))", "legendFormat": "{{job}}" }
+        { "refId": "A", "expr": "service:http_request_duration_seconds:p99{service=~\"api-gateway|order-service|risk-engine|market-data-service|matching-engine|clearing-settlement|promotion-service|accounting-tax-service\"}", "legendFormat": "{{service}}" }
       ],
       "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] }
     },
@@ -59,9 +59,9 @@
       "gridPos": { "h": 8, "w": 8, "x": 0, "y": 14 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
-        { "refId": "A", "expr": "histogram_quantile(0.99, sum by (le) (rate(trading_matching_latency_seconds_bucket[5m])))", "legendFormat": "p99" }
+        { "refId": "A", "expr": "histogram_quantile(0.99, sum by (le) (rate(trading_matching_latency_seconds_bucket{service=\"matching-engine\"}[5m])))", "legendFormat": "p99" }
       ],
-      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] }
+      "fieldConfig": { "defaults": { "unit": "s", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 0.005 }, { "color": "red", "value": 0.01 }] }, "custom": { "thresholdsStyle": { "mode": "dashed", "lineWidth": 1, "colorMode": "custom" } } }, "overrides": [] }
     },
     {
       "id": 6,
@@ -70,7 +70,7 @@
       "gridPos": { "h": 8, "w": 8, "x": 8, "y": 14 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
-        { "refId": "A", "expr": "sum by (status) (increase(trading_orders_total[5m]))", "legendFormat": "{{status}}" }
+        { "refId": "A", "expr": "sum by (status) (increase(trading_orders_total{service=\"order-service\"}[5m]))", "legendFormat": "{{status}}" }
       ],
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }
     },
@@ -81,8 +81,8 @@
       "gridPos": { "h": 8, "w": 8, "x": 16, "y": 14 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
-        { "refId": "A", "expr": "trading_ws_connections", "legendFormat": "clients" },
-        { "refId": "B", "expr": "rate(trading_ws_dropped_total[5m])", "legendFormat": "dropped/s" }
+        { "refId": "A", "expr": "trading_ws_connections{service=\"market-data-service\"}", "legendFormat": "clients" },
+        { "refId": "B", "expr": "rate(trading_ws_dropped_total{service=\"market-data-service\"}[5m])", "legendFormat": "dropped/s" }
       ],
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }
     }

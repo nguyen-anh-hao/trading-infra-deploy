@@ -1,28 +1,82 @@
 {
   "uid": "latency-breakdown",
-  "title": "Latency Breakdown",
+  "title": "Trading — Latency Breakdown",
+  "description": "Server-side HTTP percentiles and matching-engine internals. Baselines: docs/baselines.yaml.",
+  "tags": ["trading", "latency", "baseline"],
   "schemaVersion": 39,
   "version": 1,
   "refresh": "5s",
   "time": { "from": "now-6h", "to": "now" },
   "panels": [
     {
+      "id": 1,
       "type": "timeseries",
-      "title": "P50 / P95 / P99 Latency",
+      "title": "HTTP p50 / p95 / p99 / p999 by service",
       "gridPos": { "h": 10, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
-        { "expr": "histogram_quantile(0.50, rate(http_request_duration_seconds_bucket[5m]))", "legendFormat": "P50" },
-        { "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))", "legendFormat": "P95" },
-        { "expr": "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))", "legendFormat": "P99" }
-      ]
+        { "refId": "A", "expr": "service:http_request_duration_seconds:p50", "legendFormat": "{{service}} p50" },
+        { "refId": "B", "expr": "service:http_request_duration_seconds:p95", "legendFormat": "{{service}} p95" },
+        { "refId": "C", "expr": "service:http_request_duration_seconds:p99", "legendFormat": "{{service}} p99" },
+        { "refId": "D", "expr": "service:http_request_duration_seconds:p999", "legendFormat": "{{service}} p999" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 0.5 },
+              { "color": "red", "value": 1 }
+            ]
+          },
+          "custom": { "thresholdsStyle": { "mode": "dashed", "lineWidth": 1, "colorMode": "custom" } }
+        },
+        "overrides": []
+      }
     },
     {
+      "id": 2,
       "type": "timeseries",
-      "title": "Matching Engine Nanoseconds",
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 10 },
+      "title": "Matching engine internal latency (server-side histogram)",
+      "description": "Baseline: p99 <= 5ms (docs/baselines.yaml#matching_p99).",
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 10 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
-        { "expr": "matching_latency_ns", "legendFormat": "ns/order" }
-      ]
+        { "refId": "A", "expr": "histogram_quantile(0.99, sum by (le) (rate(trading_matching_latency_seconds_bucket[5m])))", "legendFormat": "p99" },
+        { "refId": "B", "expr": "histogram_quantile(0.999, sum by (le) (rate(trading_matching_latency_seconds_bucket[5m])))", "legendFormat": "p999" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 0.005 },
+              { "color": "red", "value": 0.01 }
+            ]
+          },
+          "custom": { "thresholdsStyle": { "mode": "dashed", "lineWidth": 1, "colorMode": "custom" } }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Order-service -> matching engine client round-trip",
+      "description": "This is the order-service view (matching_latency_ns gauge), not the engine's internal histogram.",
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 10 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "matching_latency_ns{service=\"order-service\"} / 1e9", "legendFormat": "{{op}} round-trip" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "s" },
+        "overrides": []
+      }
     }
   ]
 }

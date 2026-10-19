@@ -1,0 +1,453 @@
+# Baseline catalog for the trading platform.
+#
+# This file is the single source of truth for:
+#   - docs/BASELINES.md (human explanation)
+#   - deployments/observability/prometheus/recording_rules_baselines.yml
+#   - deployments/observability/grafana/dashboards/baseline_scorecard.json
+#   - the "Baseline legend" text panels in the service dashboards
+#
+# Run `make baseline-render` after editing, and `make baseline-check` in CI.
+#
+# Fields:
+#   id          stable, anchor-friendly identifier (used in Grafana data links)
+#   title       human readable name
+#   category    availability | latency | saturation | pipeline | business
+#   expr        PromQL expression that returns the current value(s)
+#   comparator  <= | < | >= | > | ==  (value is compliant when this holds)
+#   target      numeric threshold
+#   unit        Grafana unit (s, percentunit, short, bytes, ...)
+#   severity    critical | warning
+#   source      primary source URL
+#   description short explanation shown in docs / scorecard
+#   legend      include this row in the dashboard legend text panel
+#
+# Expressions should keep the `service` label (use `max by (service)` or a
+# metric selector that already carries the scrape-time `service` label) so the
+# scorecard can filter and group by service.
+
+baselines:
+  # ---------------------------------------------------------------------------
+  # Availability
+  # ---------------------------------------------------------------------------
+  - id: http_5xx_ratio
+    title: HTTP 5xx ratio
+    category: availability
+    expr: service:http_error_ratio5m
+    comparator: "<="
+    target: 0.005
+    unit: percentunit
+    severity: critical
+    source: https://sre.google/sre-book/availability-table/
+    description: "5xx ratio <= 0.5%, the error budget of a 99.5% availability SLO."
+    legend: true
+
+  - id: http_5xx_ratio_burn_fast
+    title: Fast error-budget burn (1h)
+    category: availability
+    expr: service:http_error_ratio1h
+    comparator: "<="
+    target: 0.072
+    unit: percentunit
+    severity: critical
+    source: https://sre.google/workbook/alerting-on-slos/
+    description: "14.4x burn of a 0.5% budget; both 5m and 1h windows should agree."
+    legend: false
+
+  - id: scrape_up
+    title: Scrape target up
+    category: availability
+    expr: up{job=~"api-gateway|order-service|risk-engine|market-data-service|matching-engine|clearing-settlement|promotion-service|accounting-tax-service"}
+    comparator: ">="
+    target: 1
+    unit: short
+    severity: critical
+    source: https://prometheus.io/docs/practices/alerting/
+    description: "Every application scrape target must be reachable."
+    legend: true
+
+  - id: scrape_duration
+    title: Scrape duration
+    category: availability
+    expr: scrape_duration_seconds{job=~"api-gateway|order-service|risk-engine|market-data-service|matching-engine|clearing-settlement|promotion-service|accounting-tax-service"}
+    comparator: "<="
+    target: 2.5
+    unit: s
+    severity: warning
+    source: https://prometheus.io/docs/practices/alerting/
+    description: "A 5s scrape interval should finish well under half the interval."
+    legend: false
+
+  # ---------------------------------------------------------------------------
+  # Latency
+  # ---------------------------------------------------------------------------
+  - id: order_path_p99
+    title: Order path p99
+    category: latency
+    expr: histogram_quantile(0.99, sum by (service, le) (rate(http_request_duration_seconds_bucket{service="order-service",path=~"/orders.*"}[5m])))
+    comparator: "<="
+    target: 0.5
+    unit: s
+    severity: critical
+    source: https://sre.google/workbook/alerting-on-slos/
+    description: "p99 order path <= 500ms; the SRE HIGH_FAST bucket targets 200ms."
+    legend: true
+
+  - id: http_p99
+    title: HTTP p99
+    category: latency
+    expr: service:http_request_duration_seconds:p99
+    comparator: "<="
+    target: 1
+    unit: s
+    severity: warning
+    source: https://sre.google/workbook/alerting-on-slos/
+    description: "Generic HTTP p99 alarm threshold; per-service SLOs are tighter."
+    legend: true
+
+  - id: matching_p99
+    title: Matching engine p99
+    category: latency
+    expr: histogram_quantile(0.99, sum by (service, le) (rate(trading_matching_latency_seconds_bucket[5m])))
+    comparator: "<="
+    target: 0.005
+    unit: s
+    severity: critical
+    source: https://martinfowler.com/articles/lmax.html
+    description: "In-memory matching p99 <= 5ms; LMAX demonstrates 6M orders/s on one thread as the reference ceiling."
+    legend: true
+
+  - id: matching_p999
+    title: Matching engine p999
+    category: latency
+    expr: histogram_quantile(0.999, sum by (service, le) (rate(trading_matching_latency_seconds_bucket[5m])))
+    comparator: "<="
+    target: 0.01
+    unit: s
+    severity: warning
+    source: https://research.google/pubs/pub40801/
+    description: "Tail events dominate at scale; p999 should stay within 2x of the p99 target."
+    legend: false
+
+  - id: tail_ratio_p99_p50
+    title: HTTP p99/p50 tail ratio
+    category: latency
+    expr: service:http_request_duration_seconds:p99 / clamp_min(service:http_request_duration_seconds:p50, 0.0001)
+    comparator: "<="
+    target: 5
+    unit: short
+    severity: warning
+    source: https://research.google/pubs/pub40801/
+    description: "Hardware-independent tail amplification guard; a rising ratio indicates queueing or a slow dependency."
+    legend: true
+
+  - id: ws_send_p99
+    title: Tick -> WebSocket p99
+    category: latency
+    expr: histogram_quantile(0.99, sum by (service, le) (rate(trading_market_ws_send_duration_seconds_bucket[5m])))
+    comparator: "<="
+    target: 0.1
+    unit: s
+    severity: warning
+    source: https://research.google/pubs/pub40801/
+    description: "Sub-100ms updates feel fluid; measure server-side enqueue-to-write duration."
+    legend: false
+
+  # ---------------------------------------------------------------------------
+  # Saturation / runtime (all ratios are independent of the host size)
+  # ---------------------------------------------------------------------------
+  - id: cpu_throttled_ratio
+    title: CFS throttled periods ratio
+    category: saturation
+    expr: service:cpu:throttled_ratio5m
+    comparator: "<="
+    target: 0.01
+    unit: percentunit
+    severity: warning
+    source: https://www.kernel.org/doc/html/latest/scheduler/sched-bwc.html
+    description: "Any sustained CPU throttling means the quota, not the workload, is the bottleneck."
+    legend: true
+
+  - id: cpu_usage_ratio
+    title: CPU usage / quota
+    category: saturation
+    expr: service:cpu:usage_ratio5m
+    comparator: "<="
+    target: 0.7
+    unit: percentunit
+    severity: warning
+    source: https://sre.google/sre-book/handling-overload/
+    description: "Leave headroom so the service can absorb 2x-10x traffic before degrading."
+    legend: false
+
+  - id: memory_ratio
+    title: Memory working set / limit
+    category: saturation
+    expr: service:memory:working_set_ratio
+    comparator: "<="
+    target: 0.8
+    unit: percentunit
+    severity: warning
+    source: https://go.dev/doc/gc-guide
+    description: "Keep the live heap below 80% of the limit to avoid OOM and GC death spirals."
+    legend: true
+
+  - id: go_gc_cpu_fraction
+    title: Go GC CPU fraction
+    category: saturation
+    expr: go_memstats_gc_cpu_fraction
+    comparator: "<="
+    target: 0.05
+    unit: percentunit
+    severity: warning
+    source: https://go.dev/doc/gc-guide
+    description: "GC CPU above 5% is a strong signal of allocation pressure; profile mallocgc/gcAssistAlloc above 15%/5%."
+    legend: false
+
+  - id: jvm_gc_pause_p99
+    title: JVM GC pause p99
+    category: saturation
+    expr: histogram_quantile(0.99, sum by (service, le) (rate(jvm_gc_pause_seconds_bucket[5m])))
+    comparator: "<="
+    target: 0.2
+    unit: s
+    severity: warning
+    source: https://docs.oracle.com/en/java/javase/21/gctuning/
+    description: "G1 default max pause target is 200ms; sustained pauses above it hurt p99 request latency."
+    legend: true
+
+  - id: hikari_pending
+    title: Hikari pending connections
+    category: saturation
+    expr: hikaricp_connections_pending
+    comparator: "<="
+    target: 0
+    unit: short
+    severity: warning
+    source: https://github.com/brettwooldridge/HikariCP/wiki/About-Pool-Sizing
+    description: "Sustained pending acquisition means the pool is too small or the database is slow."
+    legend: false
+
+
+  - id: postgres_blocked_locks
+    title: PostgreSQL blocked locks
+    category: saturation
+    expr: max by (service) (pg_blocked_locks)
+    comparator: "<="
+    target: 0
+    unit: short
+    severity: critical
+    source: https://www.postgresql.org/docs/current/monitoring-stats.html
+    description: "Blocked locks are a direct saturation/correctness symptom."
+    legend: true
+
+  - id: postgres_connections
+    title: PostgreSQL connections
+    category: saturation
+    expr: max by (service) (pg_connections)
+    comparator: "<="
+    target: 80
+    unit: short
+    severity: warning
+    source: https://www.postgresql.org/docs/current/runtime-config-connection.html
+    description: "PostgreSQL max_connections defaults to 100; stay below 80% and size pools with cores*2+spindles."
+    legend: false
+
+  - id: redis_memory_ratio
+    title: Redis memory ratio
+    category: saturation
+    expr: redis_memory_used_bytes / clamp_min(redis_memory_max_bytes, 1)
+    comparator: "<="
+    target: 0.8
+    unit: percentunit
+    severity: warning
+    source: https://redis.io/docs/latest/operate/oss_and_stack/management/optimization/latency/
+    description: "Eviction or OOM starts once Redis approaches its maxmemory limit."
+    legend: false
+
+  - id: redis_evictions
+    title: Redis evictions
+    category: saturation
+    expr: increase(redis_evicted_keys_total[5m])
+    comparator: "<="
+    target: 0
+    unit: short
+    severity: critical
+    source: https://redis.io/docs/latest/operate/oss_and_stack/management/optimization/latency/
+    description: "Evictions silently destroy shared state; any eviction is an incident."
+    legend: true
+
+  # ---------------------------------------------------------------------------
+  # Data pipeline
+  # ---------------------------------------------------------------------------
+  - id: outbox_oldest_age
+    title: Outbox oldest age
+    category: pipeline
+    expr: max by (service) (trading_outbox_oldest_age_seconds)
+    comparator: "<="
+    target: 60
+    unit: s
+    severity: critical
+    source: https://microservices.io/patterns/data/transactional-outbox.html
+    description: "The end-to-end order -> accounting promise is one minute; a stalled outbox breaks it."
+    legend: true
+
+  - id: outbox_pending
+    title: Outbox pending rows
+    category: pipeline
+    expr: max by (service) (trading_outbox_pending)
+    comparator: "<="
+    target: 100
+    unit: short
+    severity: warning
+    source: https://microservices.io/patterns/data/transactional-outbox.html
+    description: "A growing backlog means the relay/Debezium path is slower than the write path."
+    legend: false
+
+  - id: risk_journal_lag
+    title: Risk journal lag
+    category: pipeline
+    expr: max by (service) (trading_risk_journal_lag_seconds)
+    comparator: "<="
+    target: 30
+    unit: s
+    severity: critical
+    source: https://redis.io/docs/latest/develop/data-types/streams/
+    description: "Risk state must follow the order stream within 30s."
+    legend: true
+
+  - id: risk_journal_length
+    title: Risk journal length
+    category: pipeline
+    expr: max by (service) (trading_risk_journal_length)
+    comparator: "<="
+    target: 10000
+    unit: short
+    severity: warning
+    source: https://redis.io/docs/latest/develop/data-types/streams/
+    description: "An unbounded stream length indicates the consumer is not keeping up."
+    legend: false
+
+  - id: risk_journal_apply_errors
+    title: Risk journal apply errors
+    category: pipeline
+    expr: increase(trading_risk_journal_apply_errors_total[5m])
+    comparator: "<="
+    target: 0
+    unit: short
+    severity: critical
+    source: https://sre.google/sre-book/monitoring-distributed-systems/
+    description: "Any failed apply is a correctness event, not a performance warning."
+    legend: true
+
+  - id: kafka_consumer_lag
+    title: Kafka consumer lag
+    category: pipeline
+    expr: max by (service, consumergroup, topic) (kafka_consumergroup_lag)
+    comparator: "<="
+    target: 1000
+    unit: short
+    severity: warning
+    source: https://kafka.apache.org/documentation/#monitoring
+    description: "A stable lag is fine; a growing lag or drain time > 30s is not."
+    legend: true
+
+
+  - id: nats_slow_consumers
+    title: NATS slow consumers
+    category: pipeline
+    expr: max by (service) (nats_varz_slow_consumers)
+    comparator: "<="
+    target: 0
+    unit: short
+    severity: critical
+    source: https://docs.nats.io/running-a-nats-service/configuration/slow_consumers
+    description: "A slow consumer gets disconnected once the server's write deadline expires."
+    legend: false
+
+  - id: nats_pending_bytes
+    title: NATS pending bytes
+    category: pipeline
+    expr: max by (service) (nats_varz_pending_bytes)
+    comparator: "<="
+    target: 10485760
+    unit: bytes
+    severity: warning
+    source: https://docs.nats.io/running-a-nats-service/configuration/slow_consumers
+    description: "Alert at 10MB against the 64MB default max_pending buffer."
+    legend: true
+
+  - id: ws_dropped
+    title: WebSocket dropped frames
+    category: pipeline
+    expr: increase(trading_ws_dropped_total[5m]) or (0 * trading_ws_connections)
+    comparator: "<="
+    target: 0
+    unit: short
+    severity: warning
+    source: https://docs.nats.io/running-a-nats-service/configuration/slow_consumers
+    description: "Dropping market data is a user-visible correctness failure for a priceboard."
+    legend: true
+
+  - id: ticks_dedupe_ratio
+    title: Market dedupe ratio
+    category: pipeline
+    expr: rate(trading_market_dedupe_total[5m]) / clamp_min(rate(trading_market_ticks_ingested_total[5m]), 1e-9)
+    comparator: "<="
+    target: 0.01
+    unit: percentunit
+    severity: warning
+    source: https://docs.nats.io/running-a-nats-service/configuration/slow_consumers
+    description: "A high duplicate ratio means redelivery or a broken idempotency key."
+    legend: false
+
+  # ---------------------------------------------------------------------------
+  # Business correctness
+  # ---------------------------------------------------------------------------
+  - id: order_unknown_state
+    title: Orders in UNKNOWN state
+    category: business
+    expr: max by (service) (trading_orders_current{status="UNKNOWN"})
+    comparator: "<="
+    target: 0
+    unit: short
+    severity: critical
+    source: https://sre.google/sre-book/monitoring-distributed-systems/
+    description: "UNKNOWN means the order outcome cannot be proven; operators must investigate."
+    legend: true
+
+  - id: settlement_failures
+    title: Settlement failures
+    category: business
+    expr: increase(trading_settlements_total{status="FAILED"}[5m])
+    comparator: "<="
+    target: 0
+    unit: short
+    severity: critical
+    source: https://sre.google/sre-book/monitoring-distributed-systems/
+    description: "A failed settlement is a money-correctness event."
+    legend: true
+
+  - id: accounting_errors
+    title: Accounting consumer errors
+    category: business
+    expr: increase(trading_accounting_errors_total[5m])
+    comparator: "<="
+    target: 0
+    unit: short
+    severity: critical
+    source: https://kafka.apache.org/documentation/#monitoring
+    description: "Accounting must consume every trade/ledger event exactly once."
+    legend: false
+
+  - id: promotion_errors
+    title: Promotion errors
+    category: business
+    expr: increase(trading_promotion_errors_total[5m])
+    comparator: "<="
+    target: 0
+    unit: short
+    severity: warning
+    source: https://sre.google/sre-book/monitoring-distributed-systems/
+    description: "Voucher/faucet errors should be visible before support tickets arrive."
+    legend: false
+

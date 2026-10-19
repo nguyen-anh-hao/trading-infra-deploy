@@ -3,8 +3,9 @@ SHELL := /bin/bash
 # WSL often has Docker Engine with the standalone `docker-compose` binary but no
 # `docker compose` CLI plugin. Prefer the plugin, fall back to the standalone.
 COMPOSE ?= $(shell docker compose version >/dev/null 2>&1 && echo "docker compose" || echo "docker-compose")
+PYTHON ?= $(shell command -v python3 >/dev/null 2>&1 && echo python3 || echo python)
 
-.PHONY: help net infra-up monitor-up app-pull app-up app-local up up-prod down down-v reset k8s-deploy k8s-down logs-app ps stress-order stress-ws check
+.PHONY: help net infra-up monitor-up app-pull app-up app-local up up-prod down down-v reset k8s-deploy k8s-down logs-app ps stress-order stress-ws check baseline-render baseline-check baseline
 
 help:
 	@echo "======================================================================="
@@ -24,7 +25,10 @@ help:
 	@echo "  make ps             - View status of all active containers"
 	@echo "  make stress-order   - Run k6 order-flow load test"
 	@echo "  make stress-ws      - Run k6 WebSocket fan-out test"
-	@echo "  make check          - Validate compose files, alert rules and kustomize output"
+	@echo "  make baseline       - Run the k6 baseline gate (writes stress/results/)"
+	@echo "  make baseline-render - Regenerate Prometheus rules + Grafana baseline dashboards"
+	@echo "  make baseline-check - Fail if generated baseline artifacts are stale"
+	@echo "  make check          - Validate compose files, rules, dashboards and kustomize output"
 	@echo "======================================================================="
 
 # Shared docker network for inter-container communication
@@ -112,16 +116,32 @@ stress-order:
 stress-ws:
 	k6 run -e GATEWAY=http://localhost:8080 stress/k6-ws-priceboard.js
 
+baseline-render:
+	$(PYTHON) scripts/render_baselines.py
+
+baseline-check:
+	$(PYTHON) scripts/render_baselines.py --check
+
+baseline:
+	k6 run -e GATEWAY=http://localhost:8080 -e API_KEY=demo-key stress/k6-baseline.js
+
 # 6b. Local validation (no containers are started)
 check:
 	$(COMPOSE) -f deployments/docker/docker-compose.infra.yml config -q
 	$(COMPOSE) -f deployments/docker/docker-compose.app.yml config -q
 	$(COMPOSE) -f deployments/docker/docker-compose.local.yml config -q
 	$(COMPOSE) -f deployments/observability/docker-compose.monitor.yml config -q
+	$(PYTHON) scripts/render_baselines.py --check
+	@for f in deployments/observability/grafana/dashboards/*.json; do \
+		$(PYTHON) -m json.tool "$$f" >/dev/null || exit 1; \
+	done
 	@if command -v promtool >/dev/null 2>&1; then \
-		promtool check rules deployments/observability/prometheus/alert_rules.yml; \
+		promtool check rules \
+			deployments/observability/prometheus/recording_rules.yml \
+			deployments/observability/prometheus/recording_rules_baselines.yml \
+			deployments/observability/prometheus/alert_rules.yml; \
 	else \
-		echo "promtool not installed; skipping alert rule validation"; \
+		echo "promtool not installed; skipping rule validation"; \
 	fi
 	@if command -v kubectl >/dev/null 2>&1 && kubectl version --client >/dev/null 2>&1; then \
 		kubectl kustomize deployments/k8s >/dev/null; \

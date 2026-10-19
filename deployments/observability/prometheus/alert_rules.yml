@@ -5,22 +5,22 @@ groups:
         expr: |
           sum by (job) (rate(http_requests_total{status=~"5.."}[5m]))
           /
-          clamp_min(sum by (job) (rate(http_requests_total[5m])), 1)
+          clamp_min(sum by (job) (rate(http_requests_total[5m])), 1e-9)
       - record: job:http_error_ratio1h
         expr: |
           sum by (job) (rate(http_requests_total{status=~"5.."}[1h]))
           /
-          clamp_min(sum by (job) (rate(http_requests_total[1h])), 1)
+          clamp_min(sum by (job) (rate(http_requests_total[1h])), 1e-9)
       - record: job:java_http_error_ratio5m
         expr: |
           sum by (job) (rate(http_server_requests_seconds_count{status=~"5.."}[5m]))
           /
-          clamp_min(sum by (job) (rate(http_server_requests_seconds_count[5m])), 1)
+          clamp_min(sum by (job) (rate(http_server_requests_seconds_count[5m])), 1e-9)
       - record: job:java_http_error_ratio1h
         expr: |
           sum by (job) (rate(http_server_requests_seconds_count{status=~"5.."}[1h]))
           /
-          clamp_min(sum by (job) (rate(http_server_requests_seconds_count[1h])), 1)
+          clamp_min(sum by (job) (rate(http_server_requests_seconds_count[1h])), 1e-9)
 
   - name: slo-burn-rate
     rules:
@@ -80,7 +80,7 @@ groups:
         expr: |
           sum by (job) (rate(http_requests_total{status=~"5.."}[5m]))
           /
-          clamp_min(sum by (job) (rate(http_requests_total[5m])), 1)
+          clamp_min(sum by (job) (rate(http_requests_total[5m])), 1e-9)
           > 0.005
         for: 5m
         labels: {severity: warning, team: exchange-platform}
@@ -92,7 +92,7 @@ groups:
         expr: |
           sum by (job) (rate(http_server_requests_seconds_count{status=~"5.."}[5m]))
           /
-          clamp_min(sum by (job) (rate(http_server_requests_seconds_count[5m])), 1)
+          clamp_min(sum by (job) (rate(http_server_requests_seconds_count[5m])), 1e-9)
           > 0.005
         for: 5m
         labels: {severity: warning, team: exchange-platform}
@@ -182,7 +182,7 @@ groups:
           runbook_url: "https://github.com/nguyen-anh-hao/trading-infra-deploy#operations-and-known-limits"
 
       - alert: PostgresBlockedLocks
-        expr: pg_blocked_locks > 5
+        expr: max by (service) (pg_blocked_locks) > 0
         for: 5m
         labels: {severity: critical, team: exchange-platform}
         annotations:
@@ -264,7 +264,7 @@ groups:
           runbook_url: "https://github.com/nguyen-anh-hao/trading-infra-deploy#operations-and-known-limits"
 
       - alert: WebSocketBackpressure
-        expr: max(trading_ws_dropped_total) > 0
+        expr: max by (service) (increase(trading_ws_dropped_total[5m])) > 0
         for: 5m
         labels: {severity: warning, team: exchange-platform}
         annotations:
@@ -315,4 +315,50 @@ groups:
         annotations:
           summary: "Redis CPU > 80%"
           runbook_url: "https://github.com/nguyen-anh-hao/trading-infra-deploy#operations-and-known-limits"
+
+
+  - name: baseline-guards
+    rules:
+      - alert: ContainerCPUThrottlingHigh
+        expr: service:cpu:throttled_ratio5m > 0.01
+        for: 10m
+        labels: {severity: warning, team: exchange-platform}
+        annotations:
+          summary: "{{ $labels.service }} is CPU throttled"
+          description: "More than 1% of CFS periods were throttled; raise the CPU limit or reduce the workload."
+          runbook_url: "https://github.com/nguyen-anh-hao/trading-infra-deploy/blob/main/docs/BASELINES.md#cpu_throttled_ratio"
+
+      - alert: MemorySaturation
+        expr: service:memory:working_set_ratio > 0.85
+        for: 10m
+        labels: {severity: warning, team: exchange-platform}
+        annotations:
+          summary: "{{ $labels.service }} memory > 85% of limit"
+          runbook_url: "https://github.com/nguyen-anh-hao/trading-infra-deploy/blob/main/docs/BASELINES.md#memory_ratio"
+
+      - alert: GoGCPressure
+        expr: go_memstats_gc_cpu_fraction > 0.05
+        for: 15m
+        labels: {severity: warning, team: exchange-platform}
+        annotations:
+          summary: "{{ $labels.service }} GC CPU > 5%"
+          description: "Allocation pressure is high; inspect runtime.mallocgc and runtime.gcAssistAlloc in the CPU profile."
+          runbook_url: "https://github.com/nguyen-anh-hao/trading-infra-deploy/blob/main/docs/BASELINES.md#go_gc_cpu_fraction"
+
+      - alert: JVMGCPauseHigh
+        expr: histogram_quantile(0.99, sum by (service, le) (rate(jvm_gc_pause_seconds_bucket[5m]))) > 0.2
+        for: 10m
+        labels: {severity: warning, team: exchange-platform}
+        annotations:
+          summary: "{{ $labels.service }} JVM GC pause p99 > 200ms"
+          runbook_url: "https://github.com/nguyen-anh-hao/trading-infra-deploy/blob/main/docs/BASELINES.md#jvm_gc_pause_p99"
+
+      - alert: BaselineCriticalFailing
+        expr: sum by (baseline, service) (baseline:violation{severity="critical"}) > 0
+        for: 15m
+        labels: {severity: critical, team: exchange-platform}
+        annotations:
+          summary: "Critical baseline failing: {{ $labels.baseline }} on {{ $labels.service }}"
+          description: "See the Baseline Scorecard dashboard and docs/BASELINES.md."
+          runbook_url: "https://github.com/nguyen-anh-hao/trading-infra-deploy/blob/main/docs/BASELINES.md"
 

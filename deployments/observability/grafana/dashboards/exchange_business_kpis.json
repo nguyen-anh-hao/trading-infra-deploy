@@ -1,34 +1,59 @@
 {
   "uid": "exchange-business-kpis",
-  "title": "Exchange Business KPIs",
+  "title": "Trading — Exchange Business KPIs",
+  "description": "Volume, fills, slippage and engine rejects. Baselines: docs/baselines.yaml.",
+  "tags": ["trading", "business", "baseline"],
   "schemaVersion": 39,
   "version": 1,
   "refresh": "5s",
   "time": { "from": "now-6h", "to": "now" },
   "panels": [
     {
+      "id": 1,
       "type": "timeseries",
       "title": "Orders/sec",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
-        { "expr": "sum(rate(http_requests_total{job=\"api-gateway\",path=\"/orders\"}[5m]))", "legendFormat": "orders/s" }
-      ]
+        { "refId": "A", "expr": "sum(rate(http_requests_total{service=\"api-gateway\",path=\"/orders\"}[5m]))", "legendFormat": "gateway orders/s" },
+        { "refId": "B", "expr": "rate(trading_matching_orders_total{service=\"matching-engine\"}[5m])", "legendFormat": "engine orders/s" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] }
     },
     {
+      "id": 2,
       "type": "timeseries",
       "title": "Fills/sec",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
-        { "expr": "sum(rate(trades_total[5m]))", "legendFormat": "fills/s" }
-      ]
+        { "refId": "A", "expr": "sum by (symbol) (rate(trades_total{service=\"order-service\"}[5m]))", "legendFormat": "{{symbol}}" },
+        { "refId": "B", "expr": "rate(trading_matching_trades_total{service=\"matching-engine\"}[5m])", "legendFormat": "engine fills/s" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] }
     },
     {
+      "id": 3,
       "type": "timeseries",
       "title": "Slippage (bps)",
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
-        { "expr": "avg(slippage_bps)", "legendFormat": "slippage" }
-      ]
+        { "refId": "A", "expr": "avg by (symbol) (slippage_bps{service=\"order-service\"})", "legendFormat": "{{symbol}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Engine rejects and cancels",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "rate(trading_matching_errors_total{service=\"matching-engine\"}[5m])", "legendFormat": "rejects/s" },
+        { "refId": "B", "expr": "rate(trading_matching_cancels_total{service=\"matching-engine\"}[5m])", "legendFormat": "cancels/s" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] }
     }
   ]
 }

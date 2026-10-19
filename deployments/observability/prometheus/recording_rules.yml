@@ -1,0 +1,134 @@
+# Cross-language service-level recording rules.
+#
+# Go services expose `http_requests_total` / `http_request_duration_seconds`;
+# Spring services expose `http_server_requests_seconds_*`. These rules collapse
+# both shapes into one `service:*` namespace so dashboards, baseline rules and
+# alerts work identically for every service.
+groups:
+  - name: service-red
+    interval: 30s
+    rules:
+      - record: service:http_requests:rate5m
+        expr: |
+          sum by (service, job, status) (rate(http_requests_total[5m]))
+          or
+          sum by (service, job, status) (rate(http_server_requests_seconds_count[5m]))
+
+      - record: service:http_5xx:rate5m
+        expr: |
+          sum by (service) (rate(http_requests_total{status=~"5.."}[5m]))
+          or
+          sum by (service) (rate(http_server_requests_seconds_count{status=~"5.."}[5m]))
+          or
+          (0 * sum by (service) (rate(http_requests_total[5m])))
+          or
+          (0 * sum by (service) (rate(http_server_requests_seconds_count[5m])))
+
+      - record: service:http_error_ratio5m
+        expr: |
+          (
+            sum by (service) (rate(http_requests_total{status=~"5.."}[5m]))
+            or
+            sum by (service) (rate(http_server_requests_seconds_count{status=~"5.."}[5m]))
+            or
+            (0 * sum by (service) (rate(http_requests_total[5m])))
+            or
+            (0 * sum by (service) (rate(http_server_requests_seconds_count[5m])))
+          )
+          /
+          clamp_min(
+            (
+              sum by (service) (rate(http_requests_total[5m]))
+              or
+              sum by (service) (rate(http_server_requests_seconds_count[5m]))
+            ),
+            1e-9
+          )
+
+      - record: service:http_error_ratio1h
+        expr: |
+          (
+            sum by (service) (rate(http_requests_total{status=~"5.."}[1h]))
+            or
+            sum by (service) (rate(http_server_requests_seconds_count{status=~"5.."}[1h]))
+            or
+            (0 * sum by (service) (rate(http_requests_total[1h])))
+            or
+            (0 * sum by (service) (rate(http_server_requests_seconds_count[1h])))
+          )
+          /
+          clamp_min(
+            (
+              sum by (service) (rate(http_requests_total[1h]))
+              or
+              sum by (service) (rate(http_server_requests_seconds_count[1h]))
+            ),
+            1e-9
+          )
+
+      - record: service:http_request_duration_seconds:p50
+        expr: |
+          histogram_quantile(0.50,
+            sum by (service, le) (rate(http_request_duration_seconds_bucket[5m]))
+            or
+            sum by (service, le) (rate(http_server_requests_seconds_bucket[5m]))
+          )
+
+      - record: service:http_request_duration_seconds:p95
+        expr: |
+          histogram_quantile(0.95,
+            sum by (service, le) (rate(http_request_duration_seconds_bucket[5m]))
+            or
+            sum by (service, le) (rate(http_server_requests_seconds_bucket[5m]))
+          )
+
+      - record: service:http_request_duration_seconds:p99
+        expr: |
+          histogram_quantile(0.99,
+            sum by (service, le) (rate(http_request_duration_seconds_bucket[5m]))
+            or
+            sum by (service, le) (rate(http_server_requests_seconds_bucket[5m]))
+          )
+
+      - record: service:http_request_duration_seconds:p999
+        expr: |
+          histogram_quantile(0.999,
+            sum by (service, le) (rate(http_request_duration_seconds_bucket[5m]))
+            or
+            sum by (service, le) (rate(http_server_requests_seconds_bucket[5m]))
+          )
+
+  - name: service-saturation
+    interval: 30s
+    rules:
+      # cAdvisor joins the Docker Compose service label to `service` via
+      # metric_relabel_configs in prometheus.yml. The ratio is relative to the
+      # allocated quota, so it is comparable across dev and prod hosts.
+      - record: service:cpu:usage_ratio5m
+        expr: |
+          sum by (service) (rate(container_cpu_usage_seconds_total{service!=""}[5m]))
+          /
+          clamp_min(
+            sum by (service) (
+              (container_spec_cpu_quota{service!=""} / container_spec_cpu_period{service!=""}) > 0
+            ),
+            0.001
+          )
+
+      - record: service:cpu:throttled_ratio5m
+        expr: |
+          sum by (service) (rate(container_cpu_cfs_throttled_periods_total{service!=""}[5m]))
+          /
+          clamp_min(
+            sum by (service) (rate(container_cpu_cfs_periods_total{service!=""}[5m])),
+            1e-9
+          )
+
+      - record: service:memory:working_set_ratio
+        expr: |
+          sum by (service) (container_memory_working_set_bytes{service!=""})
+          /
+          clamp_min(
+            sum by (service) (container_spec_memory_limit_bytes{service!=""} > 0),
+            1
+          )

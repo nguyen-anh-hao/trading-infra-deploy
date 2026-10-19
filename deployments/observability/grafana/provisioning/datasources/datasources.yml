@@ -53,9 +53,9 @@ datasources:
             value: 'service'
         queries:
           - name: 'Request rate'
-            query: 'sum by (service) (rate(http_requests_total{$$__tags}[5m]))'
+            query: 'sum by (service) (service:http_requests:rate5m{$$__tags})'
           - name: 'P95 latency'
-            query: 'histogram_quantile(0.95, sum by (le, service) (rate(http_request_duration_seconds_bucket{$$__tags}[5m])))'
+            query: 'service:http_request_duration_seconds:p95{$$__tags}'
 
   - name: Tempo
     uid: tempo
@@ -95,9 +95,9 @@ datasources:
             value: 'service'
         queries:
           - name: 'Request rate'
-            query: 'sum by (service) (rate(http_requests_total{$$__tags}[5m]))'
+            query: 'sum by (service) (service:http_requests:rate5m{$$__tags})'
           - name: 'P95 latency'
-            query: 'histogram_quantile(0.95, sum by (le, service) (rate(http_request_duration_seconds_bucket{$$__tags}[5m])))'
+            query: 'service:http_request_duration_seconds:p95{$$__tags}'
 
   - name: Pyroscope
     uid: pyroscope

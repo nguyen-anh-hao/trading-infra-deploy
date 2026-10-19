@@ -61,7 +61,7 @@
       "targets": [
         { "refId": "A", "expr": "max by (consumergroup, topic) (kafka_consumergroup_lag)", "legendFormat": "{{consumergroup}}/{{topic}}" }
       ],
-      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }
+      "fieldConfig": { "defaults": { "unit": "short", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 1000 }, { "color": "red", "value": 10000 }] }, "custom": { "thresholdsStyle": { "mode": "dashed", "lineWidth": 1, "colorMode": "custom" } } }, "overrides": [] }
     },
     {
       "id": 6,
@@ -83,7 +83,8 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         { "refId": "A", "expr": "trading_ws_connections", "legendFormat": "clients" },
-        { "refId": "B", "expr": "increase(trading_ws_dropped_total[5m])", "legendFormat": "dropped/5m" }
+        { "refId": "B", "expr": "increase(trading_ws_dropped_total[5m])", "legendFormat": "dropped/5m" },
+        { "refId": "C", "expr": "histogram_quantile(0.99, sum by (le) (rate(trading_market_ws_send_duration_seconds_bucket[5m])))", "legendFormat": "send p99" }
       ],
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }
     },
@@ -109,6 +110,36 @@
         { "refId": "B", "expr": "rate(trading_risk_journal_apply_errors_total[5m])", "legendFormat": "journal errors/s" }
       ],
       "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] }
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Kafka lag drain time",
+      "description": "Hardware-independent view: lag divided by the consumer's current offset rate. Baseline < 30s (docs/baselines.yaml#kafka_consumer_lag).",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 32 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (consumergroup, topic) (kafka_consumergroup_lag) / clamp_min(sum by (consumergroup, topic) (rate(kafka_consumergroup_current_offset[5m])), 1e-9)",
+          "legendFormat": "{{consumergroup}}/{{topic}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 30 },
+              { "color": "red", "value": 120 }
+            ]
+          },
+          "custom": { "thresholdsStyle": { "mode": "dashed", "lineWidth": 1, "colorMode": "custom" } }
+        },
+        "overrides": []
+      }
     }
   ]
 }

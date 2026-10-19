@@ -4,6 +4,10 @@ services:
       context: ../../../matching-engine
       dockerfile: Dockerfile
     image: matching-engine:local
+    # Pin the dev quota so CPU/quota and latency baselines are comparable with
+    # production (the baseline catalog expects the same cgroup limits).
+    cpus: 1.0
+    mem_limit: 512m
     ports:
       - "9001:9001"
     environment:
@@ -24,6 +28,8 @@ services:
       context: ../../../risk-engine
       dockerfile: Dockerfile
     image: risk-engine:local
+    cpus: 1.0
+    mem_limit: 512m
     ports:
       - "9002:9002"
     environment:
@@ -43,6 +49,8 @@ services:
       context: ../../../clearing-settlement
       dockerfile: Dockerfile
     image: clearing-settlement:local
+    cpus: 1.0
+    mem_limit: 768m
     ports:
       - "8083:8083"
     environment:
@@ -66,6 +74,8 @@ services:
       context: ../../../promotion-service
       dockerfile: Dockerfile
     image: promotion-service:local
+    cpus: 0.5
+    mem_limit: 256m
     ports:
       - "8084:8084"
     environment:
@@ -82,6 +92,8 @@ services:
       context: ../../../market-data-service
       dockerfile: Dockerfile
     image: market-data-service:local
+    cpus: 1.0
+    mem_limit: 512m
     ports:
       - "8085:8085"
     environment:
@@ -106,6 +118,8 @@ services:
       context: ../../../order-service
       dockerfile: Dockerfile
     image: order-service:local
+    cpus: 1.0
+    mem_limit: 512m
     ports:
       - "8087:8087"
     environment:
@@ -140,6 +154,8 @@ services:
       context: ../../../api-gateway
       dockerfile: Dockerfile
     image: api-gateway:local
+    cpus: 1.0
+    mem_limit: 512m
     ports:
       - "8080:8080"
     environment:
@@ -177,6 +193,8 @@ services:
       context: ../../../accounting-tax-service
       dockerfile: Dockerfile
     image: accounting-tax-service:local
+    cpus: 1.0
+    mem_limit: 768m
     ports:
       - "8086:8086"
     environment:
