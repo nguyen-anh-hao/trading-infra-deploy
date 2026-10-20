@@ -8,6 +8,9 @@ data:
   POSTGRES_DB: settlement
   POSTGRES_USER: settlement
   POSTGRES_PASSWORD: settlement
+  SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/settlement
+  SPRING_DATASOURCE_USERNAME: settlement
+  SPRING_DATASOURCE_PASSWORD: settlement
   REDIS_ADDR: redis:6379
   ORDERS_DB_DSN: postgres://settlement:settlement@postgres:5432/orders?sslmode=disable
   RISK_DB_DSN: postgres://settlement:settlement@postgres:5432/risk?sslmode=disable
@@ -16,7 +19,7 @@ data:
   RISK_ENGINE_ADDR: risk-engine:9002
   SETTLEMENT_ADDR: clearing-settlement:8083
   PROMOTION_ADDR: promotion-service:8084
-  KAFKA_BOOTSTRAP_SERVERS: kafka-bootstrap:9092
+  KAFKA_BOOTSTRAP_SERVERS: trading-kafka-kafka-bootstrap:9092
   TAX_RATE: "0.10"
   ORDER_SERVICE_ADDR: order-service:8087
   MARKET_DATA_ADDR: market-data-service:8085

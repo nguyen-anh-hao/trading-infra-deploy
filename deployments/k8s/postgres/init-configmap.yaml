@@ -1,0 +1,126 @@
+﻿apiVersion: v1
+data:
+  01_schema.sql: "-- =============================================================================\r\n--
+    System-of-record schema, owned exclusively by the `clearing-settlement`\r\n--
+    service (PostgreSQL database `settlement`).\r\n--\r\n--   ledger_entries : append-only
+    immutable double-entry journal (source of truth)\r\n--   balances       : materialized
+    read-model derived from ledger_entries\r\n--   trades         : executed fills
+    persisted on settlement\r\n--\r\n-- All monetary values use NUMERIC (fixed precision)
+    to avoid floating point\r\n-- rounding errors.\r\n-- =============================================================================\r\n\r\nCREATE
+    TABLE IF NOT EXISTS balances (\r\n    account_id BIGINT NOT NULL,\r\n    asset
+    \      VARCHAR(32) NOT NULL,\r\n    total       NUMERIC(30, 8) NOT NULL DEFAULT
+    0,\r\n    available   NUMERIC(30, 8) NOT NULL DEFAULT 0,\r\n    frozen      NUMERIC(30,
+    8) NOT NULL DEFAULT 0,\r\n    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),\r\n
+    \   PRIMARY KEY (account_id, asset)\r\n);\r\n\r\nCREATE TABLE IF NOT EXISTS trades
+    (\r\n    trade_id         BIGINT PRIMARY KEY,\r\n    symbol           VARCHAR(24)
+    NOT NULL,\r\n    price            NUMERIC(30, 8) NOT NULL,\r\n    quantity         NUMERIC(30,
+    8) NOT NULL,\r\n    fee              NUMERIC(30, 8) NOT NULL DEFAULT 0,\r\n    maker_order_id
+    \  BIGINT NOT NULL,\r\n    taker_order_id   BIGINT NOT NULL,\r\n    maker_account_id
+    BIGINT NOT NULL,\r\n    taker_account_id BIGINT NOT NULL,\r\n    executed_at      TIMESTAMPTZ
+    NOT NULL DEFAULT now()\r\n);\r\nCREATE INDEX IF NOT EXISTS idx_trades_symbol ON
+    trades(symbol);\r\n\r\n-- Append-only immutable journal (double-entry ledger).\r\nCREATE
+    TABLE IF NOT EXISTS ledger_entries (\r\n    entry_id     BIGINT PRIMARY KEY,\r\n
+    \   account_id   BIGINT NOT NULL,\r\n    asset        VARCHAR(32) NOT NULL,\r\n
+    \   debit        NUMERIC(30, 8) NOT NULL DEFAULT 0,\r\n    credit       NUMERIC(30,
+    8) NOT NULL DEFAULT 0,\r\n    reference    VARCHAR(64),\r\n    reason       VARCHAR(32),\r\n
+    \   timestamp_ns BIGINT NOT NULL\r\n);\r\nCREATE INDEX IF NOT EXISTS idx_ledger_account
+    ON ledger_entries(account_id);\r\n\r\n-- =============================================================================\r\n--
+    Transactional Outbox (Debezium CDC source)\r\n-- The clearing-settlement service
+    writes one row per accounting event in the\r\n-- SAME transaction as the ledger/trades/balances
+    writes. Debezium tails this\r\n-- table and relays events to Kafka. `payload`
+    holds Confluent-framed Avro bytes\r\n-- (magic byte + schema id + Avro) registered
+    in the Schema Registry.\r\n--\r\n-- Column names match the Debezium Outbox Event
+    Router SMT defaults.\r\n-- =============================================================================\r\nCREATE
+    TABLE IF NOT EXISTS outbox (\r\n    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),\r\n
+    \   aggregatetype VARCHAR(64)  NOT NULL,   -- e.g. trade | ledger | deposit |
+    withdrawal\r\n    aggregateid   VARCHAR(64)  NOT NULL,   -- e.g. trade_id / entry_id
+    / account_id\r\n    type          VARCHAR(128) NOT NULL,   -- e.g. TradeSettledEvent\r\n
+    \   payload       BYTEA        NOT NULL,   -- Confluent-framed Avro bytes\r\n
+    \   created_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),\r\n    published_at  TIMESTAMPTZ,\r\n
+    \   status        VARCHAR(16)  NOT NULL DEFAULT 'PENDING',\r\n    retry_count
+    \  INT          NOT NULL DEFAULT 0\r\n);\r\nCREATE INDEX IF NOT EXISTS idx_outbox_status
+    ON outbox(status, created_at);\r\n"
+  02_mock_data.sql: "-- Seed accounts and initial balances for the demo bots.\r\nINSERT
+    INTO balances(account_id, asset, total, available, frozen) VALUES\r\n    (1, 'CASH',
+    \      1000000, 1000000, 0),\r\n    (1, 'STOCK:AAPL',    1000,    1000, 0),\r\n
+    \   (1, 'STOCK:MSFT',     500,     500, 0),\r\n    (2, 'CASH',       1000000,
+    1000000, 0),\r\n    (2, 'STOCK:AAPL',     500,     500, 0),\r\n    (2, 'STOCK:TSLA',
+    \    300,     300, 0)\r\nON CONFLICT (account_id, asset) DO NOTHING;\r\n"
+  03_orders_risk.sql: "-- =============================================================================\r\n--
+    Databases for order-service and risk-engine.\r\n-- The settlement database/outbox
+    remains owned by clearing-settlement.\r\n-- This file runs only on a fresh PostgreSQL
+    volume (docker-entrypoint-initdb).\r\n-- =============================================================================\r\n\r\nCREATE
+    DATABASE orders OWNER settlement;\r\nCREATE DATABASE risk OWNER settlement;\r\n\r\n\\connect
+    orders\r\n\r\nCREATE TABLE IF NOT EXISTS orders (\r\n    order_id            BIGINT
+    PRIMARY KEY,\r\n    account_id          BIGINT NOT NULL,\r\n    client_order_id
+    \    TEXT,\r\n    symbol              TEXT NOT NULL,\r\n    side                TEXT
+    NOT NULL,\r\n    type                TEXT NOT NULL,\r\n    time_in_force       TEXT
+    NOT NULL,\r\n    price               NUMERIC(30,8) NOT NULL DEFAULT 0,\r\n    quantity
+    \           NUMERIC(30,8) NOT NULL,\r\n    executed_quantity   NUMERIC(30,8) NOT
+    NULL DEFAULT 0,\r\n    leaves_quantity     NUMERIC(30,8) NOT NULL DEFAULT 0,\r\n
+    \   status              TEXT NOT NULL,\r\n    reject_reason       TEXT,\r\n    version
+    \            BIGINT NOT NULL DEFAULT 0,\r\n    created_at          TIMESTAMPTZ
+    NOT NULL DEFAULT now(),\r\n    updated_at          TIMESTAMPTZ NOT NULL DEFAULT
+    now()\r\n);\r\nCREATE UNIQUE INDEX IF NOT EXISTS uq_orders_client_order\r\n    ON
+    orders(account_id, client_order_id) WHERE client_order_id IS NOT NULL;\r\nCREATE
+    INDEX IF NOT EXISTS idx_orders_account_status\r\n    ON orders(account_id, status,
+    created_at DESC);\r\n\r\nCREATE TABLE IF NOT EXISTS order_idempotency (\r\n    account_id
+    \         BIGINT NOT NULL,\r\n    client_order_id     TEXT NOT NULL,\r\n    status
+    \             TEXT NOT NULL,\r\n    order_id            BIGINT,\r\n    created_at
+    \         TIMESTAMPTZ NOT NULL DEFAULT now(),\r\n    updated_at          TIMESTAMPTZ
+    NOT NULL DEFAULT now(),\r\n    PRIMARY KEY (account_id, client_order_id)\r\n);\r\n\r\nCREATE
+    TABLE IF NOT EXISTS order_fills (\r\n    account_id          BIGINT NOT NULL,\r\n
+    \   trade_id            BIGINT NOT NULL,\r\n    order_id            BIGINT NOT
+    NULL,\r\n    counterparty_order  BIGINT,\r\n    symbol              TEXT NOT NULL,\r\n
+    \   price               NUMERIC(30,8) NOT NULL,\r\n    quantity            NUMERIC(30,8)
+    NOT NULL,\r\n    fee                 NUMERIC(30,8) NOT NULL DEFAULT 0,\r\n    role
+    \               TEXT NOT NULL,\r\n    executed_at         TIMESTAMPTZ NOT NULL
+    DEFAULT now(),\r\n    PRIMARY KEY (account_id, trade_id)\r\n);\r\nCREATE INDEX
+    IF NOT EXISTS idx_order_fills_order ON order_fills(order_id);\r\n\r\nCREATE TABLE
+    IF NOT EXISTS order_reservations (\r\n    order_id            BIGINT PRIMARY KEY,\r\n
+    \   account_id          BIGINT NOT NULL,\r\n    symbol              TEXT NOT NULL,\r\n
+    \   side                TEXT NOT NULL,\r\n    price               NUMERIC(30,8)
+    NOT NULL,\r\n    fee_rate            NUMERIC(30,8) NOT NULL,\r\n    quantity            NUMERIC(30,8)
+    NOT NULL,\r\n    status              TEXT NOT NULL DEFAULT 'PENDING',\r\n    updated_at
+    \         TIMESTAMPTZ NOT NULL DEFAULT now()\r\n);\r\n\r\nCREATE TABLE IF NOT
+    EXISTS outbox (\r\n    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),\r\n
+    \   aggregate_type      TEXT NOT NULL,\r\n    aggregate_id        TEXT NOT NULL,\r\n
+    \   event_type          TEXT NOT NULL,\r\n    payload             BYTEA NOT NULL,\r\n
+    \   created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),\r\n    published_at
+    \       TIMESTAMPTZ,\r\n    status              TEXT NOT NULL DEFAULT 'PENDING',\r\n
+    \   retry_count         INT NOT NULL DEFAULT 0\r\n);\r\nCREATE INDEX IF NOT EXISTS
+    idx_order_outbox_pending ON outbox(status, created_at);\r\n\r\n\\connect risk\r\n\r\nCREATE
+    TABLE IF NOT EXISTS risk_balances (\r\n    account_id          BIGINT NOT NULL,\r\n
+    \   asset               TEXT NOT NULL,\r\n    total               NUMERIC(30,8)
+    NOT NULL DEFAULT 0,\r\n    available           NUMERIC(30,8) NOT NULL DEFAULT
+    0,\r\n    frozen              NUMERIC(30,8) NOT NULL DEFAULT 0,\r\n    version
+    \            BIGINT NOT NULL DEFAULT 0,\r\n    updated_at          TIMESTAMPTZ
+    NOT NULL DEFAULT now(),\r\n    PRIMARY KEY (account_id, asset)\r\n);\r\n\r\nCREATE
+    TABLE IF NOT EXISTS risk_reservations (\r\n    order_id            BIGINT PRIMARY
+    KEY,\r\n    account_id          BIGINT NOT NULL,\r\n    asset               TEXT
+    NOT NULL,\r\n    amount              NUMERIC(30,8) NOT NULL,\r\n    status              TEXT
+    NOT NULL DEFAULT 'ACTIVE',\r\n    created_at          TIMESTAMPTZ NOT NULL DEFAULT
+    now(),\r\n    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()\r\n);\r\n\r\nCREATE
+    TABLE IF NOT EXISTS risk_events (\r\n    event_id            UUID PRIMARY KEY,\r\n
+    \   event_type          TEXT NOT NULL,\r\n    payload             JSONB NOT NULL,\r\n
+    \   created_at          TIMESTAMPTZ NOT NULL DEFAULT now()\r\n);\r\n\r\nCREATE
+    TABLE IF NOT EXISTS outbox (\r\n    id                  UUID PRIMARY KEY DEFAULT
+    gen_random_uuid(),\r\n    aggregate_type      TEXT NOT NULL,\r\n    aggregate_id
+    \       TEXT NOT NULL,\r\n    event_type          TEXT NOT NULL,\r\n    payload
+    \            BYTEA NOT NULL,\r\n    created_at          TIMESTAMPTZ NOT NULL DEFAULT
+    now(),\r\n    published_at        TIMESTAMPTZ,\r\n    status              TEXT
+    NOT NULL DEFAULT 'PENDING',\r\n    retry_count         INT NOT NULL DEFAULT 0\r\n);\r\nCREATE
+    INDEX IF NOT EXISTS idx_risk_outbox_pending ON outbox(status, created_at);\r\n\r\n--
+    Initial demo balances (same values as the old Redis seed).\r\nINSERT INTO risk_balances(account_id,
+    asset, total, available, frozen)\r\nVALUES\r\n    (1, 'CASH',       1000000, 1000000,
+    0),\r\n    (1, 'STOCK:AAPL',    1000,    1000, 0),\r\n    (1, 'STOCK:MSFT',     500,
+    \    500, 0),\r\n    (2, 'CASH',       1000000, 1000000, 0),\r\n    (2, 'STOCK:AAPL',
+    \    500,     500, 0),\r\n    (2, 'STOCK:TSLA',     300,     300, 0)\r\nON CONFLICT
+    (account_id, asset) DO NOTHING;\r\n"
+kind: ConfigMap
+metadata:
+
+  name: postgres-init
+  namespace: trading-system
+
+

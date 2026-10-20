@@ -15,9 +15,12 @@ spec:
     spec:
       containers:
         - name: matching-engine
-          image: matching-engine:latest
+          image: ghcr.io/nguyen-anh-hao/matching-engine:latest
           ports:
             - containerPort: 9001
+          envFrom:
+            - configMapRef:
+                name: app-config
           resources:
             requests:
               cpu: "1"

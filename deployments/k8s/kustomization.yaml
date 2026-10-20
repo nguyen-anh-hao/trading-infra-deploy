@@ -4,6 +4,7 @@ kind: Kustomization
 resources:
   - namespace.yaml
   - configmaps/app-config.yaml
+  - postgres/init-configmap.yaml
   - postgres/service.yaml
   - postgres/statefulset.yaml
   - redis/deployment.yaml
@@ -18,3 +19,4 @@ resources:
   - hpa/autoscalers.yaml
   - kafka/kafka-cluster.yaml
   - kafka/accounting-topics.yaml
+  - kafka/schema-registry.yaml

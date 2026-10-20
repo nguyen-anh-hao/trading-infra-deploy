@@ -15,9 +15,12 @@ spec:
     spec:
       containers:
         - name: risk-engine
-          image: risk-engine:latest
+          image: ghcr.io/nguyen-anh-hao/risk-engine:latest
           ports:
             - containerPort: 9002
+          envFrom:
+            - configMapRef:
+                name: app-config
           livenessProbe:
             httpGet:
               path: /health

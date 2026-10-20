@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: clearing-settlement
-          image: clearing-settlement:latest
+          image: ghcr.io/nguyen-anh-hao/clearing-settlement:latest
           ports:
             - containerPort: 8083
           envFrom:
