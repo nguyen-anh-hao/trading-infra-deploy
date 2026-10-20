@@ -1,1 +1,2 @@
-# k6 baseline result JSON files are written here by `make baseline`.
+# k6 summary JSON files and generated CV reports are written here by `make stress-*`.
+# They are gitignored; only this marker is tracked.

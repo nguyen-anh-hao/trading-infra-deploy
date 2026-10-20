@@ -1,0 +1,14 @@
+# Dedicated 50 req/s/client limit for the rate-limit scenario.
+#
+# Apply it on top of docker-compose.stress.yml:
+#   docker compose -f docker-compose.local.yml \
+#     -f docker-compose.stress.yml \
+#     -f docker-compose.stress-ratelimit.yml up -d api-gateway
+#
+# Then run k6-gateway.js with -e RATE_LIMIT=true -e RATE_LIMIT_PER_SEC=50
+# -e PROFILE=ratelimit. Do not run the write scenario against this stack: it is
+# intentionally throttled.
+services:
+  api-gateway:
+    environment:
+      RATE_LIMIT_PER_SEC: "50"

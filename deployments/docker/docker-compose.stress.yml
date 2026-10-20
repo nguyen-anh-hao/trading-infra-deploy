@@ -1,0 +1,33 @@
+# Measurement overlay for the local compose stack.
+#
+# Docker Compose merges environment maps, so only the keys below are replaced.
+# INFO logging removes the debug-log I/O that makes local latency numbers
+# incomparable with production. The rate limit is effectively disabled for
+# load runs; use docker-compose.stress-ratelimit.yml on top of this file for
+# the token-bucket scenario.
+services:
+  matching-engine:
+    environment:
+      LOG_LEVEL: info
+  risk-engine:
+    environment:
+      LOG_LEVEL: info
+  clearing-settlement:
+    environment:
+      LOG_LEVEL: info
+  promotion-service:
+    environment:
+      LOG_LEVEL: info
+  market-data-service:
+    environment:
+      LOG_LEVEL: info
+  order-service:
+    environment:
+      LOG_LEVEL: info
+  api-gateway:
+    environment:
+      LOG_LEVEL: info
+      RATE_LIMIT_PER_SEC: "100000"
+  accounting-tax-service:
+    environment:
+      LOG_LEVEL: info

@@ -4,8 +4,13 @@ SHELL := /bin/bash
 # `docker compose` CLI plugin. Prefer the plugin, fall back to the standalone.
 COMPOSE ?= $(shell docker compose version >/dev/null 2>&1 && echo "docker compose" || echo "docker-compose")
 PYTHON ?= $(shell command -v python3 >/dev/null 2>&1 && echo python3 || echo python)
+K6 ?= k6
+RUN_ID ?= $(shell date -u +%Y%m%dT%H%M%SZ)
+PROFILE ?= load
+GIT_SHA ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+STRESS_ENV ?= -e RUN_ID=$(RUN_ID) -e PROFILE=$(PROFILE) -e GIT_SHA=$(GIT_SHA) -e GATEWAY=http://localhost:8080
 
-.PHONY: help net infra-up monitor-up app-pull app-up app-local up up-prod down down-v reset k8s-deploy k8s-down logs-app ps stress-order stress-ws check baseline-render baseline-check baseline
+.PHONY: help net infra-up monitor-up app-pull app-up app-local up up-prod down down-v reset k8s-deploy k8s-down logs-app ps stress-order stress-ws check baseline-render baseline-check baseline stress-verify stress-up stress-wait stress-reset stress-build stress-up-ratelimit stress-baseline stress-gateway stress-order-service stress-order-flow stress-matching stress-risk stress-settlement stress-invariants stress-accounting stress-market-data stress-promotion stress-ratelimit stress-all stress-report stress-report-single
 
 help:
 	@echo "======================================================================="
@@ -23,9 +28,25 @@ help:
 	@echo ""
 	@echo "  make logs-app       - Follow logs for microservices (local or prod)"
 	@echo "  make ps             - View status of all active containers"
-	@echo "  make stress-order   - Run k6 order-flow load test"
-	@echo "  make stress-ws      - Run k6 WebSocket fan-out test"
-	@echo "  make baseline       - Run the k6 baseline gate (writes stress/results/)"
+	@echo "  make stress-verify  - k6 inspect every stress script"
+	@echo "  make stress-up      - Reset-safe start: infra + app with INFO logging, wait for health"
+	@echo "  make stress-build   - Rebuild local service images (legacy builder; run after code changes)"
+	@echo "  make stress-wait    - Wait for all services and connectors to be ready"
+	@echo "  make stress-reset   - DESTRUCTIVE: wipe volumes, network and all data"
+	@echo "  make stress-all     - Run every scenario (3 runs per scenario recommended)"
+	@echo "  make stress-baseline - Gateway SLO gate (order path)"
+	@echo "  make stress-gateway - Gateway surface, auth negatives and optional rate limit"
+	@echo "  make stress-order-flow - End-to-end lifecycle + idempotency through the gateway"
+	@echo "  make stress-order-service - Direct order-service saga and outbox"
+	@echo "  make stress-matching - Direct matching engine (server-side p99/p999)"
+	@echo "  make stress-risk    - Direct risk engine + overdraw atomicity"
+	@echo "  make stress-settlement - Direct settlement throughput + replay"
+	@echo "  make stress-invariants - 10,000-trade double-entry property test"
+	@echo "  make stress-accounting - Accounting reads + settlement-to-aggregate freshness"
+	@echo "  make stress-market-data - REST + WebSocket fan-out + trade generator"
+	@echo "  make stress-promotion - Fee tiers, leaderboard, vouchers, faucet"
+	@echo "  make stress-ratelimit - 50 req/s/client token-bucket scenario"
+	@echo "  make stress-report  - Render stress/results/cv-metrics.md + cv-bullets.md"
 	@echo "  make baseline-render - Regenerate Prometheus rules + Grafana baseline dashboards"
 	@echo "  make baseline-check - Fail if generated baseline artifacts are stale"
 	@echo "  make check          - Validate compose files, rules, dashboards and kustomize output"
@@ -110,11 +131,102 @@ ps:
 	$(COMPOSE) -f deployments/docker/docker-compose.app.yml ps
 	$(COMPOSE) -f deployments/docker/docker-compose.local.yml ps
 
-stress-order:
-	k6 run -e GATEWAY=http://localhost:8080 -e API_KEY=demo-key stress/k6-order-flow.js
+stress-verify:
+	@for f in stress/k6-*.js; do \
+		"$(K6)" inspect "$$f" >/dev/null || exit 1; \
+	done
+	@echo "k6 scripts OK"
 
+stress-up: net infra-up
+	$(COMPOSE) -f deployments/docker/docker-compose.local.yml \
+		-f deployments/docker/docker-compose.stress.yml up -d
+	$(MAKE) stress-wait
+
+# Docker Desktop on WSL can have a broken buildx symlink; the legacy builder is
+# reliable for this repository's Dockerfiles. Run this after changing service code.
+stress-build:
+	DOCKER_BUILDKIT=0 docker build -t matching-engine:local ../matching-engine
+	DOCKER_BUILDKIT=0 docker build -t risk-engine:local ../risk-engine
+	DOCKER_BUILDKIT=0 docker build -t clearing-settlement:local ../clearing-settlement
+	DOCKER_BUILDKIT=0 docker build -t promotion-service:local ../promotion-service
+	DOCKER_BUILDKIT=0 docker build -t market-data-service:local ../market-data-service
+	DOCKER_BUILDKIT=0 docker build -t order-service:local ../order-service
+	DOCKER_BUILDKIT=0 docker build -t api-gateway:local ../api-gateway
+	DOCKER_BUILDKIT=0 docker build -t accounting-tax-service:local ../accounting-tax-service
+
+stress-wait:
+	bash scripts/wait_for_stack.sh
+
+stress-reset:
+	@echo "WARNING: wiping all local volumes (outbox, journal, Kafka, Postgres, Redis)."
+	$(MAKE) reset
+
+stress-up-ratelimit: net
+	$(COMPOSE) -f deployments/docker/docker-compose.local.yml \
+		-f deployments/docker/docker-compose.stress.yml \
+		-f deployments/docker/docker-compose.stress-ratelimit.yml up -d api-gateway
+	$(MAKE) stress-wait
+	@$(COMPOSE) -f deployments/docker/docker-compose.local.yml \
+		-f deployments/docker/docker-compose.stress.yml \
+		-f deployments/docker/docker-compose.stress-ratelimit.yml \
+		exec -T api-gateway env | grep -q '^RATE_LIMIT_PER_SEC=50$$' \
+		|| (echo "gateway does not have RATE_LIMIT_PER_SEC=50; refusing to run the limiter test"; exit 1)
+
+stress-baseline:
+	"$(K6)" run $(STRESS_ENV) stress/k6-baseline.js
+
+stress-gateway:
+	"$(K6)" run $(STRESS_ENV) stress/k6-gateway.js
+
+stress-order-flow:
+	"$(K6)" run $(STRESS_ENV) stress/k6-order-flow.js
+
+stress-order-service:
+	"$(K6)" run $(STRESS_ENV) -e REPLAYS=1000 -e DUPLICATES=50 stress/k6-order-service.js
+
+stress-matching:
+	"$(K6)" run $(STRESS_ENV) stress/k6-matching-engine.js
+
+stress-risk:
+	"$(K6)" run $(STRESS_ENV) stress/k6-risk-engine.js
+
+stress-settlement:
+	"$(K6)" run $(STRESS_ENV) -e REPLAYS=1000 -e DUPLICATES=50 stress/k6-settlement.js
+
+stress-invariants:
+	"$(K6)" run $(STRESS_ENV) -e TRADES=10000 stress/k6-settlement-invariants.js
+
+stress-accounting:
+	"$(K6)" run $(STRESS_ENV) stress/k6-accounting.js
+
+stress-market-data:
+	"$(K6)" run $(STRESS_ENV) -e WS_CLIENTS=50 stress/k6-market-data.js
+
+stress-promotion:
+	"$(K6)" run $(STRESS_ENV) stress/k6-promotion.js
+
+stress-ratelimit: stress-up-ratelimit
+	"$(K6)" run $(STRESS_ENV) -e PROFILE=ratelimit -e RATE_LIMIT=true \
+		-e RATE_LIMIT_PER_SEC=50 -e FLOOD_CLIENTS=4 stress/k6-gateway.js
+
+stress-all: stress-verify stress-baseline stress-gateway stress-order-flow \
+	stress-order-service stress-matching stress-risk stress-settlement \
+	stress-invariants stress-accounting stress-market-data stress-ws stress-promotion
+	@echo "All stress scenarios finished. Run 'make stress-report'."
+	@echo "The rate-limit profile needs the throttled stack: make stress-up-ratelimit && make stress-ratelimit"
+
+stress-report:
+	$(PYTHON) scripts/k6_report.py --results stress/results \
+		--templates stress/cv_templates.yaml
+
+stress-report-single:
+	$(PYTHON) scripts/k6_report.py --results stress/results \
+		--templates stress/cv_templates.yaml --allow-single
+
+# Legacy aliases kept so existing runbooks keep working.
+stress-order: stress-order-flow
 stress-ws:
-	k6 run -e GATEWAY=http://localhost:8080 stress/k6-ws-priceboard.js
+	"$(K6)" run $(STRESS_ENV) stress/k6-ws-priceboard.js
 
 baseline-render:
 	$(PYTHON) scripts/render_baselines.py
@@ -122,14 +234,18 @@ baseline-render:
 baseline-check:
 	$(PYTHON) scripts/render_baselines.py --check
 
-baseline:
-	k6 run -e GATEWAY=http://localhost:8080 -e API_KEY=demo-key stress/k6-baseline.js
+baseline: stress-baseline
 
 # 6b. Local validation (no containers are started)
 check:
 	$(COMPOSE) -f deployments/docker/docker-compose.infra.yml config -q
 	$(COMPOSE) -f deployments/docker/docker-compose.app.yml config -q
 	$(COMPOSE) -f deployments/docker/docker-compose.local.yml config -q
+	$(COMPOSE) -f deployments/docker/docker-compose.local.yml \
+		-f deployments/docker/docker-compose.stress.yml config -q
+	$(COMPOSE) -f deployments/docker/docker-compose.local.yml \
+		-f deployments/docker/docker-compose.stress.yml \
+		-f deployments/docker/docker-compose.stress-ratelimit.yml config -q
 	$(COMPOSE) -f deployments/observability/docker-compose.monitor.yml config -q
 	$(PYTHON) scripts/render_baselines.py --check
 	@for f in deployments/observability/grafana/dashboards/*.json; do \
@@ -147,6 +263,13 @@ check:
 		kubectl kustomize deployments/k8s >/dev/null; \
 	else \
 		echo "kubectl unavailable; skipping kustomize validation"; \
+	fi
+	@if command -v "$(K6)" >/dev/null 2>&1; then \
+		for f in stress/k6-*.js; do \
+			"$(K6)" inspect "$$f" >/dev/null || exit 1; \
+		done; \
+	else \
+		echo "k6 not installed; skipping stress script validation"; \
 	fi
 
 # 7. Kubernetes Cluster Deployment

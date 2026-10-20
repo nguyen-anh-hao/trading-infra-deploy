@@ -288,7 +288,7 @@ baselines:
     unit: s
     severity: critical
     source: https://microservices.io/patterns/data/transactional-outbox.html
-    description: "The end-to-end order -> accounting promise is one minute; a stalled outbox breaks it."
+    description: "Operational diagnostic only: outbox rows are not marked published and have no retention job yet, so this gauge counts all history and is not a k6/CV claim."
     legend: true
 
   - id: outbox_pending
@@ -300,7 +300,7 @@ baselines:
     unit: short
     severity: warning
     source: https://microservices.io/patterns/data/transactional-outbox.html
-    description: "A growing backlog means the relay/Debezium path is slower than the write path."
+    description: "Operational diagnostic only until the outbox has an acknowledged/cleanup path; it is not a k6/CV claim."
     legend: false
 
   - id: risk_journal_lag

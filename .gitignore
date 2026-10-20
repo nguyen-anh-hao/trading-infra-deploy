@@ -1,8 +1,12 @@
 .env
 *.log
+__pycache__/
+*.pyc
 
 .idea/
 .vscode/
 .DS_Store
 stress/results/*.json
+stress/results/*.md
+stress/results/archive-smoke/
 

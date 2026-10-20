@@ -1,0 +1,126 @@
+# CV bullet templates.
+#
+# A bullet is rendered only when every metric in `requires` exists for a
+# scenario/profile group and every k6 threshold passed. Numbers are filled from
+# stress/results/*.json by scripts/k6_report.py; never edit a number manually.
+templates:
+  - id: baseline_order_gate
+    scenario: baseline
+    requires: [http_rps, place_order_p99_ms, http_failed_ratio]
+    template: >-
+      Order path SLO gate: {{http_rps}} of mixed HTTP traffic and IOC orders at
+      p99 {{place_order_p99_ms}}, {{http_failed_ratio}} failed requests across
+      {{run_count}} × {{duration_s}}s runs.
+
+  - id: gateway_mixed_traffic
+    scenario: gateway
+    profile: load
+    requires: [http_rps, place_order_p99_ms, http_failed_ratio]
+    template: >-
+      Single Go/OpenAPI edge for five business groups: {{http_rps}} of
+      mixed reads and order writes at p99 {{place_order_p99_ms}}, with
+      {{http_failed_ratio}} failed requests.
+
+  - id: gateway_rate_limit
+    scenario: gateway
+    profile: ratelimit
+    requires: [gateway_flood_allowed, gateway_control_allowed, gateway_429, limit_per_sec, flood_clients]
+    template: >-
+      Per-client token bucket (Redis Lua): {{flood_clients}} flooding clients
+      held to {{limit_per_sec}} req/s each ({{gateway_flood_allowed}} of offered
+      traffic allowed), while a control client kept {{gateway_control_allowed}}
+      success and {{gateway_429}} requests were rejected with 429 — no
+      cross-client impact.
+
+  - id: order_service_saga
+    scenario: order-service
+    requires: [place_order_rps, place_order_p99_ms, replay_same_order]
+    template: >-
+      Orchestrated saga (claim → reserve → match → book): {{place_order_rps}}
+      at p99 {{place_order_p99_ms}}; {{replay_same_order}} of
+      client_order_id replays returned the original order.
+
+  - id: order_flow_idempotency
+    scenario: order-flow
+    requires: [place_order_rps, place_order_p99_ms, replay_same_order]
+    template: >-
+      End-to-end order lifecycle through the gateway: {{place_order_rps}}
+      at p99 {{place_order_p99_ms}}; {{replay_same_order}} of 1,000
+      sequential plus 50 concurrent replays collapsed to one order.
+
+  - id: settlement_double_entry
+    scenario: settlement
+    requires: [settle_rate, settle_p99_ms, invoices_checked, ledger_balanced]
+    template: >-
+      Double-entry settlement: {{settle_rate}} at p99
+      {{settle_p99_ms}}; {{invoices_checked}} trades produced exactly five
+      balanced legs each, with debits equal to credits per asset
+      ({{ledger_balanced}}).
+
+  - id: settlement_replay
+    scenario: settlement
+    requires: [invoices_checked, ledger_balanced, replays, duplicates]
+    template: >-
+      Idempotent by trade_id: {{replays}} sequential and {{duplicates}}
+      concurrent replays produced one set of ledger entries; the journal
+      invariant held for {{invoices_checked}} trades ({{ledger_balanced}}).
+
+  - id: settlement_property
+    scenario: settlement-invariants
+    requires: [invoices_checked, ledger_balanced]
+    template: >-
+      Property-style double-entry test: {{invoices_checked}} randomized trades
+      each produced five legs with debits equal to credits per asset
+      ({{ledger_balanced}}).
+
+  - id: matching_engine_latency
+    scenario: matching-engine
+    requires: [trades_per_s, matching_p99_ms, fill_ratio]
+    template: >-
+      Single-writer price-time matching: {{trades_per_s}}; server-side
+      matching p99 {{matching_p99_ms}}, with a {{fill_ratio}} crossing-order
+      fill ratio.
+
+  - id: risk_atomicity
+    scenario: risk-engine
+    requires: [risk_check_p99_ms, overdraw_success, overdraw_conflict, journal_lag_p95_s, overdraw_vus]
+    template: >-
+      Pre-trade risk with Redis Lua atomicity: check p99
+      {{risk_check_p99_ms}}; {{overdraw_vus}} concurrent reservations against a
+      finite balance allowed {{overdraw_success}} and rejected
+      {{overdraw_conflict}} with 409, and the write-behind journal lag stayed at
+      {{journal_lag_p95_s}}.
+
+  - id: market_data_fanout
+    scenario: market-data
+    requires: [ws_clients_config, ws_connections_max, ws_messages_per_s, ws_handshake_p95_ms, ws_snapshot_ok, ws_dropped_per_s]
+    template: >-
+      Market-data fan-out: {{ws_clients_config}} WebSocket clients (server max
+      {{ws_connections_max}}) received {{ws_messages_per_s}} at a
+      {{ws_handshake_p95_ms}} handshake p95; {{ws_snapshot_ok}} of sessions
+      received a snapshot and the server dropped {{ws_dropped_per_s}} frames/s.
+
+  - id: accounting_freshness
+    scenario: accounting
+    requires: [accounting_summary_p99_ms, freshness_p95_ms, freshness_timeouts]
+    template: >-
+      CQRS accounting read model: summary p99 {{accounting_summary_p99_ms}};
+      settlement events became visible in {{freshness_p95_ms}} p95 with
+      {{freshness_timeouts}} freshness timeouts and no unexpected responses.
+
+  - id: promotion_incentives
+    scenario: promotion
+    requires: [fee_tiers_p99_ms, redeem_rate, redeem_accepted_ratio]
+    template: >-
+      Incentive reads and voucher redemptions: fee-tier p99
+      {{fee_tiers_p99_ms}} while redeeming {{redeem_rate}};
+      {{redeem_accepted_ratio}} of codes were accepted, documenting the
+      non-idempotent voucher path.
+
+  - id: ws_priceboard
+    scenario: ws-priceboard
+    requires: [ws_handshake_p95_ms, ws_snapshot_ok, ws_messages_per_s]
+    template: >-
+      Public priceboard: {{ws_messages_per_s}} across reconnecting
+      subscribers, {{ws_handshake_p95_ms}} handshake p95 and
+      {{ws_snapshot_ok}} snapshot delivery.

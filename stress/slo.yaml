@@ -1,0 +1,73 @@
+# Stress-test SLOs.
+#
+# These mirror docs/baselines.yaml (the Prometheus catalogue) and are the
+# thresholds encoded in stress/k6-*.js. Keep the two files aligned: a change
+# here without a change in the scenario is a documentation bug, not a pass.
+version: 1
+
+environment:
+  host: single Docker Desktop host
+  cpus_per_service: 1.0
+  matching_engine_cpus: 1.0
+  logging: info
+  runs_per_measurement: 3
+  run_duration_seconds: 60
+
+services:
+  api-gateway:
+    scenarios: [k6-gateway.js, k6-baseline.js]
+    slo:
+      place_order_p99_ms: 500
+      ticker_p99_ms: 200
+      http_failed_ratio: 0.005
+      rate_limit_control_allowed: 0.99
+  order-service:
+    scenarios: [k6-order-service.js, k6-order-flow.js]
+    slo:
+      place_order_p99_ms: 500
+      reads_p99_ms: 300
+      # outbox age is catalogued in docs/baselines.yaml but is not a k6 gate
+      # until the outbox has a published_at/cleanup path.
+      replay_same_order_ratio: 0.99
+  matching-engine:
+    scenarios: [k6-matching-engine.js]
+    slo:
+      matching_p99_ms: 5
+      crossing_fill_ratio: 0.95
+  risk-engine:
+    scenarios: [k6-risk-engine.js]
+    slo:
+      check_p99_ms: 50
+      reserve_p99_ms: 50
+      journal_lag_seconds: 30
+      overdraw_accepted: 10
+      overdraw_rejected: 40
+  clearing-settlement:
+    scenarios: [k6-settlement.js, k6-settlement-invariants.js]
+    slo:
+      settle_p99_ms: 500
+      ledger_balanced_ratio: 1.0
+      # outbox age is not gated until CDC has an ack/cleanup path.
+      failed_settlements: 0
+  accounting-tax-service:
+    scenarios: [k6-accounting.js]
+    slo:
+      summary_p99_ms: 500
+      event_visibility_p95_ms: 5000
+      freshness_timeouts: 0
+      consumer_errors: 0
+  market-data-service:
+    scenarios: [k6-market-data.js, k6-ws-priceboard.js]
+    slo:
+      read_p99_ms: 300
+      ws_send_p99_ms: 100
+      ws_handshake_p95_ms: 1000
+      snapshot_ratio: 0.99
+      dropped_frames: 0
+  promotion-service:
+    scenarios: [k6-promotion.js]
+    slo:
+      fee_tiers_p99_ms: 200
+      leaderboard_p99_ms: 200
+      redeem_p99_ms: 200
+      errors: 0
