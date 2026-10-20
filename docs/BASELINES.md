@@ -228,7 +228,7 @@ Evictions silently destroy shared state; any eviction is an incident.
 - **Expression:** `max by (service) (trading_outbox_oldest_age_seconds)`
 - **Source:** <https://microservices.io/patterns/data/transactional-outbox.html>
 
-The end-to-end order -> accounting promise is one minute; a stalled outbox breaks it.
+Operational diagnostic only: outbox rows are not marked published and have no retention job yet, so this gauge counts all history and is not a k6/CV claim.
 
 #### <a id="outbox_pending"></a>Outbox pending rows
 
@@ -237,7 +237,7 @@ The end-to-end order -> accounting promise is one minute; a stalled outbox break
 - **Expression:** `max by (service) (trading_outbox_pending)`
 - **Source:** <https://microservices.io/patterns/data/transactional-outbox.html>
 
-A growing backlog means the relay/Debezium path is slower than the write path.
+Operational diagnostic only until the outbox has an acknowledged/cleanup path; it is not a k6/CV claim.
 
 #### <a id="risk_journal_lag"></a>Risk journal lag
 
